@@ -9,7 +9,7 @@ collection, goroutines, channels, and the core runtime functions.
 ## Quick Start
 
 ```sh
-go install github.com/drpaneas/libgodc/cmd/godc@latest
+go install github.com/drpaneas/godc@latest
 godc setup
 godc doctor # to check (optional)
 ```
