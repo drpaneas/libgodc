@@ -1,0 +1,16 @@
+[book]
+authors = ["drpaneas"]
+language = "en"
+src = "docs"
+title = "libgodc"
+description = "Go Runtime for the Sega Dreamcast — Technical documentation and implementation guide"
+
+[build]
+build-dir = "book"
+
+[output.html]
+default-theme = "coal"
+preferred-dark-theme = "coal"
+git-repository-url = "https://github.com/drpaneas/libgodc"
+edit-url-template = "https://github.com/drpaneas/libgodc/edit/main/{path}"
+site-url = "/libgodc/"
