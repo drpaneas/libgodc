@@ -1,0 +1,74 @@
+# Build artifacts
+*.o
+*.a
+*.elf
+*.bin
+*.gox
+*.romdisk.img
+godc
+
+# C/C++ compilation artifacts
+*.d          # Dependency files (GCC -MMD)
+*.i          # Preprocessed files (GCC -E)
+*.s          # Assembly listing (GCC -S), but keep .S source files
+*.map        # Linker map files
+*.lst        # Assembly listing files
+
+# Temporary files
+*.tmp
+*.temp
+/tmp/
+godc-*/       # Temporary directories created by godc
+
+# Documentation build output
+book/
+
+# Editor files
+*.swp
+*~
+.vscode/
+.idea/
+.cursor/
+*.sublime-*
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Linux
+*~
+.directory
+
+# Windows (for contributors)
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Go-specific (for cmd/godc)
+*.test
+*.out
+*.cover
+*.prof
+*.pprof
+go.work
+go.work.sum
+
+# Test artifacts
+*.test.elf
+*.test.bin
+test-results/
+coverage/
+
+# Logs
+*.log
+
+# Core dumps
+core
+core.*
+*.core
+
+# Backup files
+*.bak
+*.orig
