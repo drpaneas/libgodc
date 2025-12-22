@@ -15,13 +15,7 @@ godc
 *.lst        # Assembly listing files
 
 # Temporary files
-*.tmp
 *.temp
-/tmp/
-godc-*/       # Temporary directories created by godc
-
-# Documentation build output
-book/
 
 # Editor files
 *.swp
