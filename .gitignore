@@ -5,7 +5,7 @@
 *.bin
 *.gox
 *.romdisk.img
-godc
+cmd/godc/godc
 
 # C/C++ compilation artifacts
 *.d          # Dependency files (GCC -MMD)

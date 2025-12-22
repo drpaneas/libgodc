@@ -1,0 +1,52 @@
+TARGET = {{.Name}}
+include $(KOS_BASE)/Makefile.rules
+
+# -mfsrra/-mfsca use hardware reciprocal sqrt and sin/cos (10x faster)
+# -ffast-math allows aggressive FP optimizations (breaks IEEE compliance)
+# Default: Safe mode. Set GODC_FAST=1 for maximum performance.
+ifdef GODC_FAST
+GCCGO_OPTS = -O3 -ml -m4-single -fno-split-stack -mfsrra -mfsca -ffast-math -funroll-loops
+else
+GCCGO_OPTS = -O2 -ml -m4-single -fno-split-stack -mfsrra -mfsca
+endif
+
+GCCGO = sh-elf-gccgo $(GCCGO_OPTS) -I$(KOS_BASE)/lib -L$(KOS_BASE)/lib
+OUTPUT ?= $(TARGET).elf
+
+# Auto-detect romdisk directory
+ROMDISK_DIR = romdisk
+HAS_ROMDISK = $(wildcard $(ROMDISK_DIR)/*)
+ROMDISK_OBJ = $(if $(HAS_ROMDISK),romdisk.o,)
+
+# Library search paths
+LIB_PATHS = -L$(KOS_BASE)/lib -L$(KOS_BASE)/addons/lib/dreamcast -L$(KOS_BASE)/../kos-ports/lib
+
+# Core libraries (always needed)
+# Note: libparallax requires all image loaders due to internal dependencies
+# Audio streaming libraries: libwav (WAV), libtremor (OGG Vorbis)
+LIBS = -Wl,--whole-archive -lgodcbegin -Wl,--no-whole-archive -lkos -lgodc -lparallax -lkosutils -ljpeg -lpng -lz -lkmg -lwav -ltremor
+
+# Include project-specific overrides if they exist
+-include godc.mk
+
+all: $(OUTPUT)
+
+$(TARGET).o: $(wildcard *.go)
+	$(GCCGO) -c $^ -o $@
+
+# Build romdisk if directory exists with files
+ifneq ($(HAS_ROMDISK),)
+romdisk.img: $(HAS_ROMDISK)
+	$(KOS_BASE)/utils/genromfs/genromfs -f $@ -d $(ROMDISK_DIR)
+
+romdisk.o: romdisk.img
+	$(KOS_BASE)/utils/bin2o/bin2o $< romdisk $@
+endif
+
+$(OUTPUT): $(TARGET).o $(ROMDISK_OBJ)
+	kos-cc -o $@ $^ $(LIB_PATHS) $(LIBS)
+
+clean:
+	rm -f *.o *.elf *.bin romdisk.img
+
+.PHONY: all clean
