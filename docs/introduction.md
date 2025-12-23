@@ -100,7 +100,7 @@ This runs on a Dreamcast. Real hardware. 1998 technology. Go code.
 
 Ready to begin? Head to the [Installation](getting-started/installation.md) page.
 
-Or if you want to understand the full journey, start with [Chapter 0: Building From Nothing](book/chapter_00_building_from_nothing.md).
+Or if you want to understand the full journey, start with [Building From Nothing](book/chapter_00_building_from_nothing.md).
 
 <div style="text-align: center; color: #888; padding-top: 2em;">
 "Console development is the art of saying 'no' to malloc."
