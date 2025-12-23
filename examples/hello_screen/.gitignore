@@ -1,0 +1,6 @@
+*.o
+*.elf
+*.bin
+.Makefile
+.DS_Store
+romdisk.img

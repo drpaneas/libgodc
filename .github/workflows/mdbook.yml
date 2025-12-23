@@ -1,0 +1,62 @@
+# Build and deploy mdBook documentation to GitHub Pages
+name: Documentation
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - 'book.toml'
+      - '.github/workflows/mdbook.yml'
+      - 'docs/**'
+  pull_request:
+    paths:
+      - 'book.toml'
+      - '.github/workflows/mdbook.yml'
+      - 'docs/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      MDBOOK_VERSION: 0.4.40
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install mdBook
+        run: |
+          curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSf | sh -s -- -y
+          source "$HOME/.cargo/env"
+          cargo install --version ${MDBOOK_VERSION} mdbook
+      - name: Setup Pages
+        id: pages
+        uses: actions/configure-pages@v5
+      - name: Build with mdBook
+        run: |
+          source "$HOME/.cargo/env"
+          mdbook build
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: ./book
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
