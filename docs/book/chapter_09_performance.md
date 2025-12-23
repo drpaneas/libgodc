@@ -1,4 +1,4 @@
-# Chapter 9: Performance and Trade-offs
+# Performance
 
 ## Part 1: The Cache — Your Best Friend
 

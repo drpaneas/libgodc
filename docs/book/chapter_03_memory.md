@@ -1,4 +1,4 @@
-# Chapter 3: Memory Management
+# Memory Management
 
 ## The Problem with Memory
 

@@ -1,4 +1,4 @@
-# Chapter 7: Channels and Select
+# Channels
 
 This chapter explains how libgodc implements Go channels for the Dreamcast. The implementation differs significantly from the standard Go runtime due to our M:1 cooperative scheduling model.
 

@@ -1,4 +1,4 @@
-# Chapter 2: The Toolchain
+# The Toolchain
 
 ## In this chapter
 

@@ -1,4 +1,4 @@
-# Chapter 10: Conclusion
+# Conclusion
 
 ## What We Built
 

@@ -1,4 +1,4 @@
-# Chapter 5: Panic and Recover
+# Panic and Recover
 
 ## Two Kinds of Errors
 

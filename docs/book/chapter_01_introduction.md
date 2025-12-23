@@ -1,4 +1,4 @@
-# Chapter 1: Introduction
+# Introduction to libgodc
 
 ## What Is This Book?
 

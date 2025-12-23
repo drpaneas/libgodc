@@ -1,4 +1,4 @@
-# Chapter 4: Goroutines
+# Goroutines
 
 ## The Trade-off
 

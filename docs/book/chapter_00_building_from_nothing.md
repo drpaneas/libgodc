@@ -1,4 +1,4 @@
-# Chapter 0: Building From Nothing
+# Building From Nothing
 
 ## The Real Starting Point
 

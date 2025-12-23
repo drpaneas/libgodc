@@ -1,4 +1,4 @@
-# Chapter 6: Slices, Strings, and Maps
+# Data Structures
 
 ## Part 1: Strings
 

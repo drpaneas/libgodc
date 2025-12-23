@@ -1,4 +1,4 @@
-# Chapter 8: System Integration
+# System Integration
 
 ## The Layer Cake
 
