@@ -6,30 +6,26 @@ Most documentation starts *after* the hard part. "Here's the GC" assumes you kno
 
 Let's go back to the real beginning:
 
-```go
-┌─────────────────────────────────────────────────────────────┐
-│                                                             │
-│   DAY 0: THE SITUATION                                      │
-│                                                             │
-│   You have:                                                 │
-│   • sh-elf-gccgo (Go compiler for SH-4)                     │
-│   • KallistiOS (Dreamcast SDK)                              │
-│   • A simple Go program: println("Hello, Dreamcast!")       │
-│                                                             │
-│   You try to compile it. What happens?                      │
-│                                                             │
-│   $ sh-elf-gccgo -c hello.go                                │
-│   $ sh-elf-gcc hello.o -o hello.elf                         │
-│                                                             │
-│   LINKER ERRORS. Hundreds of them.                          │
-│                                                             │
-│   undefined reference to `runtime.printstring'              │
-│   undefined reference to `runtime.printnl'                  │
-│   undefined reference to `__go_runtime_error'               │
-│   undefined reference to `runtime.newobject'                │
-│   ...                                                       │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
+```text
+DAY 0: THE SITUATION
+
+You have:
+• sh-elf-gccgo (Go compiler for SH-4)
+• KallistiOS (Dreamcast SDK)
+• A simple Go program: println("Hello, Dreamcast!")
+
+You try to compile it. What happens?
+
+$ sh-elf-gccgo -c hello.go
+$ sh-elf-gcc hello.o -o hello.elf
+
+LINKER ERRORS. Hundreds of them.
+
+undefined reference to `runtime.printstring'
+undefined reference to `runtime.printnl'
+undefined reference to `__go_runtime_error'
+undefined reference to `runtime.newobject'
+...
 ```
 
 Those undefined references are **the holes** we discussed in Chapter 2. The compiler generated calls to runtime functions that don't exist.
@@ -65,7 +61,7 @@ undefined reference to `runtime.printnl'
 undefined reference to `__go_runtime_error'
 undefined reference to `runtime.newobject'
 undefined reference to `runtime.makeslice'
-```go
+```
 
 **Start here.** Each undefined symbol is a function you need to write.
 
@@ -77,7 +73,7 @@ The gccgo frontend lives in the GCC source tree. The key directories:
 gcc/go/gofrontend/      ← The Go parser and type checker
 libgo/runtime/          ← The reference runtime (for Linux)
 libgo/go/               ← Go standard library
-```go
+```
 
 When gccgo compiles `make([]int, 10)`, it emits a call to `runtime.makeslice`. To find the expected signature:
 
@@ -105,7 +101,7 @@ When things don't work, disassemble:
 
 ```bash
 sh-elf-objdump -d test.o | less
-```go
+```
 
 Look at how functions are called. What registers hold arguments? What's expected in return registers?
 
@@ -160,7 +156,7 @@ You can't build everything at once. There are dependencies:
 │                       └─────────┘                           │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
-```go
+```
 
 ### Milestone 1: Hello World
 
@@ -225,7 +221,7 @@ func main() {
     s[0] = 42
     println(s[0])
 }
-```go
+```
 
 ### Milestone 3: Panic and Defer
 
@@ -249,7 +245,7 @@ func main() {
     println("hello")
 }
 // Should print: hello, then world
-```go
+```
 
 ### Milestone 4: Maps
 

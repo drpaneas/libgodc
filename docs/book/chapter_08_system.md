@@ -364,7 +364,7 @@ sh-elf-nm game.elf | sort > symbols.txt
 sh-elf-addr2line -f -C -i -e game.elf 0x8c015678
 # Output: functionName
 #         main.go:42
-```go
+```
 
 ### Common Bugs and Fixes
 

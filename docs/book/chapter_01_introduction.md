@@ -301,7 +301,7 @@ The SH-4 has a powerful FPU with a twist:
 │   - Avoid in performance-critical code                      │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
-```go
+```
 
 Go defaults to `float64`. For games, consider using `float32` where precision isn't critical.
 Sadly making `float32` the new default for our libgodc is not possible. Unless someone, is

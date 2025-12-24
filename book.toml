@@ -14,3 +14,5 @@ preferred-dark-theme = "navy"
 git-repository-url = "https://github.com/drpaneas/libgodc"
 edit-url-template = "https://github.com/drpaneas/libgodc/edit/main/{path}"
 site-url = "/libgodc/"
+additional-css = ["docs/theme/custom.css"]
+no-section-label = true

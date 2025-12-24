@@ -39,7 +39,7 @@ func createPlayer() *Player {
     return p                      // p (the pointer) disappears, but the
                                   // Player data survives on the heap
 }
-```go
+```
 
 The **stack** is memory that belongs to the current function call. When the function returns, that memory is immediately reclaimed—no cleanup needed, no garbage collector involved. But the data is gone forever.
 
@@ -390,7 +390,7 @@ Benchmarks from actual Dreamcast hardware (from `tests/bench_architecture.elf`),
 │  64 KB live data            ~2.2 ms                 │
 │  32 KB live data            ~6.2 ms                 │
 └─────────────────────────────────────────────────────┘
-```go
+```
 
 GC pause **scales with the number of objects**, not just total size. Many small objects (32 KB scenario) require more traversal and copying than fewer large objects.
 

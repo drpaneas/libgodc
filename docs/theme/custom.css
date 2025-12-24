@@ -1,0 +1,542 @@
+/* =============================================================================
+   DREAMCAST ERA (1998-1999) RETRO THEME
+   ============================================================================= */
+
+/* Import a retro pixel-style font */
+@import url('https://fonts.googleapis.com/css2?family=VT323&family=Press+Start+2P&family=Share+Tech+Mono&display=swap');
+
+:root {
+    /* Dreamcast color palette */
+    --dc-orange: #FF6600;
+    --dc-blue: #0066FF;
+    --dc-dark-blue: #001133;
+    --dc-light-blue: #00AAFF;
+    --dc-gray: #CCCCCC;
+    --dc-dark-gray: #1a1a2e;
+    --dc-black: #0f0f1a;
+    --dc-white: #E0E0E0;
+    --dc-green: #00FF66;
+    --dc-purple: #9933FF;
+}
+
+/* Hide sidebar chapter numbers */
+/* mdBook uses CSS counters to generate numbers - disable them */
+.sidebar ol {
+    list-style-type: none !important;
+    counter-reset: none !important;
+}
+
+.sidebar li {
+    list-style: none !important;
+}
+
+.sidebar li::before {
+    content: none !important;
+    display: none !important;
+}
+
+/* Hide the section number spans */
+.section-number {
+    display: none !important;
+}
+
+/* Reset any counter-based numbering */
+.sidebar .chapter {
+    counter-reset: none !important;
+}
+
+.sidebar .chapter li {
+    counter-increment: none !important;
+}
+
+.sidebar .chapter li::before {
+    content: "" !important;
+}
+
+/* Remove any top borders that might cause double lines */
+.content main {
+    margin-top: 0 !important;
+}
+
+#content {
+    border-top: none !important;
+}
+
+/* Remove ALL potential borders that could cause the orange line */
+.menu-bar-sticky-container,
+#menu-bar,
+.menu-bar,
+#searchbar-outer,
+.search-wrapper,
+#searchresults-header,
+.page-wrapper,
+.content-wrapper,
+.page,
+#content,
+.content,
+#main,
+main,
+.main {
+    border-bottom: none !important;
+    border-top: none !important;
+}
+
+/* Remove borders from all wrappers */
+#searchbar-outer,
+.ayu .content,
+.navy .content,
+.coal .content {
+    border: none !important;
+}
+
+/* The culprit might be the content main top border */
+.content main {
+    border-top: none !important;
+}
+
+/* Make content full width - remove all constraints */
+.page-wrapper {
+    max-width: 100% !important;
+    background: #0a0a12 !important;
+}
+
+#content,
+.page-wrapper .page,
+.content {
+    max-width: 100% !important;
+    width: auto !important;
+    background: #0a0a12 !important;
+}
+
+/* Ensure main content fills the space but leaves room for nav arrows */
+.content main {
+    width: calc(100% - 100px) !important;
+    max-width: none !important;
+    margin-right: auto !important;
+}
+
+/* Adjust nav buttons to not overlap content */
+.nav-chapters {
+    position: fixed !important;
+}
+
+/* =============================================================================
+   BACKGROUND & BODY
+   ============================================================================= */
+
+html {
+    background: #0a0a12 !important;
+}
+
+body {
+    font-family: 'Share Tech Mono', 'Courier New', monospace !important;
+    background: #0a0a12 !important;
+}
+
+/* Subtle scanline effect overlay */
+.content main::before {
+    content: "";
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: repeating-linear-gradient(
+        0deg,
+        rgba(0, 0, 0, 0.1) 0px,
+        rgba(0, 0, 0, 0.1) 1px,
+        transparent 1px,
+        transparent 3px
+    );
+    pointer-events: none;
+    z-index: 1000;
+    opacity: 0.3;
+}
+
+/* =============================================================================
+   SIDEBAR
+   ============================================================================= */
+
+.sidebar {
+    background: linear-gradient(180deg, var(--dc-dark-blue) 0%, var(--dc-black) 100%) !important;
+    border-right: none !important;
+}
+
+.sidebar .sidebar-scrollbox {
+    background: transparent !important;
+}
+
+/* Section headers in sidebar */
+.sidebar .chapter-title {
+    color: var(--dc-orange) !important;
+    font-family: 'VT323', monospace !important;
+    font-size: 1.4em !important;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    text-shadow: 0 0 10px var(--dc-orange);
+    border-bottom: none;
+    padding-bottom: 8px;
+    margin-bottom: 8px;
+}
+
+/* Sidebar links */
+.sidebar a {
+    color: var(--dc-light-blue) !important;
+    font-family: 'Share Tech Mono', monospace !important;
+    transition: all 0.2s ease;
+}
+
+.sidebar a:hover {
+    color: var(--dc-orange) !important;
+    text-shadow: 0 0 8px var(--dc-orange);
+    background: rgba(255, 102, 0, 0.1) !important;
+}
+
+.sidebar .active {
+    color: var(--dc-green) !important;
+    text-shadow: 0 0 10px var(--dc-green);
+    border-left: 4px solid var(--dc-green) !important;
+    background: rgba(0, 255, 102, 0.1) !important;
+}
+
+/* =============================================================================
+   MAIN CONTENT
+   ============================================================================= */
+
+.content {
+    background: transparent !important;
+    max-width: 100% !important;
+    padding: 0 !important;
+}
+
+.content main {
+    background: #0a0a12 !important;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    padding: 2em 80px 2em 60px;
+    max-width: calc(100% - 120px) !important;
+    margin: 0 auto !important;
+    box-sizing: border-box !important;
+    overflow-x: hidden !important;
+}
+
+/* =============================================================================
+   TYPOGRAPHY
+   ============================================================================= */
+
+/* Main headings - pixel style */
+h1 {
+    font-family: 'VT323', monospace !important;
+    color: var(--dc-orange) !important;
+    font-size: 3em !important;
+    text-transform: uppercase;
+    letter-spacing: 4px;
+    text-shadow: 
+        3px 3px 0 var(--dc-dark-blue),
+        0 0 20px var(--dc-orange);
+    border-bottom: none;
+    padding-bottom: 0.5em;
+}
+
+h2 {
+    font-family: 'VT323', monospace !important;
+    color: var(--dc-light-blue) !important;
+    font-size: 2.2em !important;
+    text-shadow: 2px 2px 0 var(--dc-dark-blue);
+    border-left: 4px solid var(--dc-orange);
+    padding-left: 0.5em;
+}
+
+h3 {
+    font-family: 'VT323', monospace !important;
+    color: var(--dc-green) !important;
+    font-size: 1.8em !important;
+    text-shadow: 1px 1px 0 var(--dc-dark-blue);
+}
+
+h4, h5, h6 {
+    font-family: 'VT323', monospace !important;
+    color: var(--dc-purple) !important;
+}
+
+/* Paragraph text */
+p, li {
+    color: var(--dc-gray) !important;
+    line-height: 1.8;
+    font-size: 1.05em;
+}
+
+/* Links */
+a {
+    color: var(--dc-light-blue) !important;
+    text-decoration: none;
+    border-bottom: none;
+    transition: all 0.2s ease;
+}
+
+a:hover {
+    color: var(--dc-orange) !important;
+    text-shadow: 0 0 8px var(--dc-orange);
+    border-bottom-color: var(--dc-orange);
+}
+
+/* Bold text */
+strong, b {
+    color: var(--dc-white) !important;
+    text-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
+}
+
+/* =============================================================================
+   CODE BLOCKS - Terminal/CRT style
+   ============================================================================= */
+
+code {
+    font-family: 'DejaVu Sans Mono', 'Menlo', 'Courier New', monospace !important;
+    background: transparent !important;
+    color: var(--dc-green) !important;
+    border: none !important;
+    padding: 0;
+    border-radius: 0;
+}
+
+pre {
+    background: #0a0a12 !important;
+    border: none !important;
+    border-radius: 12px !important;
+    box-shadow:
+        0 0 30px rgba(0, 102, 255, 0.4),
+        0 0 60px rgba(0, 102, 255, 0.25),
+        0 0 100px rgba(0, 102, 255, 0.1);
+    padding: 1.8em !important;
+    margin: 1.5em 0 !important;
+}
+
+pre code {
+    color: var(--dc-green) !important;
+    text-shadow: 0 0 2px rgba(0, 255, 102, 0.5);
+    border: none !important;
+    padding: 0 !important;
+    background: transparent !important;
+    font-family: 'DejaVu Sans Mono', 'Menlo', 'Courier New', monospace !important;
+}
+
+/* Syntax highlighting overrides */
+.hljs-keyword {
+    color: var(--dc-orange) !important;
+}
+
+.hljs-string {
+    color: var(--dc-light-blue) !important;
+}
+
+.hljs-comment {
+    color: #666688 !important;
+    font-style: italic;
+}
+
+.hljs-function, .hljs-title {
+    color: var(--dc-purple) !important;
+}
+
+.hljs-number {
+    color: #FF6699 !important;
+}
+
+/* =============================================================================
+   TABLES - Retro grid style
+   ============================================================================= */
+
+table {
+    border-collapse: collapse;
+    border: 2px solid var(--dc-orange) !important;
+    background: rgba(0, 0, 0, 0.5);
+}
+
+th {
+    background: linear-gradient(180deg, var(--dc-dark-blue) 0%, var(--dc-black) 100%) !important;
+    color: var(--dc-orange) !important;
+    font-family: 'VT323', monospace !important;
+    font-size: 1.2em;
+    text-transform: uppercase;
+    border: 1px solid var(--dc-blue) !important;
+    padding: 12px !important;
+}
+
+td {
+    border: 1px solid var(--dc-blue) !important;
+    color: var(--dc-gray) !important;
+    padding: 10px !important;
+}
+
+tr:hover td {
+    background: rgba(255, 102, 0, 0.1) !important;
+}
+
+/* =============================================================================
+   BLOCKQUOTES
+   ============================================================================= */
+
+blockquote {
+    border-left: 4px solid var(--dc-purple) !important;
+    background: rgba(153, 51, 255, 0.1) !important;
+    color: var(--dc-gray) !important;
+    font-style: italic;
+    padding: 1em;
+    margin: 1em 0;
+}
+
+/* =============================================================================
+   NAVIGATION ARROWS
+   ============================================================================= */
+
+.nav-chapters {
+    color: var(--dc-orange) !important;
+    font-size: 2em;
+    transition: all 0.2s ease;
+    background: none !important;
+    background-color: transparent !important;
+    opacity: 0.7;
+}
+
+.nav-chapters:hover {
+    color: var(--dc-light-blue) !important;
+    text-shadow: 0 0 15px var(--dc-light-blue);
+    background: none !important;
+    background-color: transparent !important;
+    opacity: 1;
+}
+
+/* Remove ALL dark overlay effects on nav hover */
+.nav-wrapper,
+.nav-chapters::before,
+.nav-chapters::after,
+.previous,
+.next,
+a.nav-chapters {
+    background: none !important;
+    background-color: transparent !important;
+    background-image: none !important;
+}
+
+/* Ensure the nav link areas don't have gradient overlays */
+.nav-chapters.previous,
+.nav-chapters.next {
+    background: none !important;
+}
+
+/* Make left and right nav spaces equal and outside content */
+.nav-chapters.previous,
+.nav-chapters.next {
+    width: 50px !important;
+    min-width: 50px !important;
+    max-width: 50px !important;
+    padding: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    position: fixed !important;
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+}
+
+.nav-chapters.previous {
+    left: 310px !important;  /* After the sidebar */
+}
+
+.nav-chapters.next {
+    right: 20px !important;
+}
+
+/* =============================================================================
+   TOP MENU BAR
+   ============================================================================= */
+
+.menu-bar {
+    background: #0a0a12 !important;
+    border-bottom: none !important;
+}
+
+.menu-bar .icon-button {
+    color: var(--dc-light-blue) !important;
+}
+
+.menu-bar .icon-button:hover {
+    color: var(--dc-orange) !important;
+}
+
+.menu-title {
+    font-family: 'VT323', monospace !important;
+    font-size: 1.5em !important;
+    color: var(--dc-orange) !important;
+    text-shadow: 0 0 10px var(--dc-orange);
+    letter-spacing: 3px;
+}
+
+/* =============================================================================
+   SEARCH
+   ============================================================================= */
+
+#searchbar {
+    background: var(--dc-black) !important;
+    border: 2px solid var(--dc-blue) !important;
+    color: var(--dc-green) !important;
+    font-family: 'Share Tech Mono', monospace !important;
+}
+
+#searchbar::placeholder {
+    color: #444466 !important;
+}
+
+.search-results {
+    background: var(--dc-dark-blue) !important;
+    border: 2px solid var(--dc-orange) !important;
+}
+
+/* =============================================================================
+   SCROLLBAR - Retro style
+   ============================================================================= */
+
+::-webkit-scrollbar {
+    width: 12px;
+    background: var(--dc-black);
+}
+
+::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, var(--dc-blue) 0%, var(--dc-dark-blue) 100%);
+    border: 2px solid var(--dc-orange);
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--dc-orange);
+}
+
+/* =============================================================================
+   LISTS
+   ============================================================================= */
+
+ul, ol {
+    color: var(--dc-gray) !important;
+}
+
+li::marker {
+    color: var(--dc-orange) !important;
+}
+
+/* =============================================================================
+   IMAGES
+   ============================================================================= */
+
+img {
+    border: 3px solid var(--dc-blue);
+    box-shadow: 0 0 20px rgba(0, 102, 255, 0.3);
+}
+
+/* =============================================================================
+   SELECTION
+   ============================================================================= */
+
+::selection {
+    background: var(--dc-orange) !important;
+    color: var(--dc-black) !important;
+}

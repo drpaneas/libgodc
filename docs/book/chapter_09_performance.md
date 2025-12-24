@@ -140,7 +140,7 @@ y := x * 2.0        // float64 math
 // FAST
 var x float32 = 3.14  // Explicit float32
 y := x * 2.0          // float32 math
-```go
+```
 
 For game physics, positions, velocities — always use float32.
 

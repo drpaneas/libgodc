@@ -27,7 +27,7 @@ typedef struct hchan {
     
     uint8_t locked;       // Simple lock (no contention in M:1)
 } hchan;
-```go
+```
 
 When you write `make(chan int, 3)`, libgodc allocates a single block containing both the `hchan` header and the buffer:
 
@@ -106,7 +106,7 @@ When you write `ch <- value`, this is `chansend()`:
 │          gopark() - yield to scheduler                      │
 │          When woken: return success flag                    │
 └─────────────────────────────────────────────────────────────┘
-```go
+```
 
 The key insight: **direct transfer**. If a receiver is already waiting, we copy data straight to their memory location, bypassing the buffer entirely. This is why unbuffered channels involve no buffer at all.
 
@@ -187,7 +187,7 @@ typedef struct sudog {
     struct sudog *releasetime; // Unused (Go runtime compat)
     struct hchan *c;     // Channel we're waiting on
 } sudog;
-```c
+```
 
 ### The Sudog Pool
 
@@ -201,7 +201,7 @@ void sudog_pool_init(void) {
         global_pool = s;
     }
 }
-```c
+```
 
 `acquireSudog()` pulls from the pool; `releaseSudog()` returns to it. If the pool is exhausted, we fall back to `malloc()`.
 
@@ -338,7 +338,7 @@ heapsort_lockorder(cas0, lockorder, ncases);
 
 // Lock in address order
 sellock(cas0, lockorder, ncases);
-```c
+```
 
 If goroutine A does `select { case <-ch1: case <-ch2: }` and goroutine B does `select { case <-ch2: case <-ch1: }`, they could deadlock if they lock in different orders. Sorting by address ensures everyone locks in the same global order.
 

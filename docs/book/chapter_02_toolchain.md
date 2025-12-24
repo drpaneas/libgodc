@@ -337,7 +337,7 @@ __asm__ volatile("ldc %0, sr" : : "r"(sr)); // write
 
 // Memory barrier - prevent compiler reordering (runtime.h)
 #define CONTEXT_SWITCH_BARRIER() __asm__ volatile("" ::: "memory")
-```go
+```
 
 We use assembly for:
 - **Prefetching** (hint cache to load data we'll need soon)
