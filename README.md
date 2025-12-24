@@ -1,13 +1,17 @@
-# libgodc
+# libgodc - Go runtime for Sega Dreamcast
 
 <p align="center">
   <img src="logo.png" alt="libgodc" width="400">
 </p>
 
-Go runtime for Sega Dreamcast.
+<p align="center">
+  <img src="examples/pong/pong.gif" alt="Pong" width="240">
+  <img src="examples/brkout/brkout.gif" alt="Breakout" width="240">
+  <img src="examples/platformer/platformer.gif" alt="Platformer" width="240">
+</p>
 
 Replaces the standard Go runtime with one designed for the Dreamcast's
-constraints: 16MB RAM, single-core SH-4, no operating system. Provides garbage
+constraints: memory 16MB RAM, CPU single-core SH-4, no operating system. Provides garbage
 collection, goroutines, channels, and the core runtime functions.
 
 ## Quick Start
