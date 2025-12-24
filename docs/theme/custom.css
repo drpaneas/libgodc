@@ -540,3 +540,135 @@ img {
     background: var(--dc-orange) !important;
     color: var(--dc-black) !important;
 }
+
+/* =============================================================================
+   MOBILE RESPONSIVE
+   ============================================================================= */
+
+@media screen and (max-width: 768px) {
+    /* Disable scanline effect on mobile for performance */
+    .content main::before {
+        display: none;
+    }
+
+    /* Main content - full width with reasonable padding */
+    .content main {
+        width: 100% !important;
+        max-width: 100% !important;
+        padding: 1em 1em 1em 1em !important;
+        margin: 0 !important;
+        box-sizing: border-box !important;
+    }
+
+    /* Typography scaling */
+    h1 {
+        font-size: 1.8em !important;
+        letter-spacing: 1px;
+    }
+
+    h2 {
+        font-size: 1.5em !important;
+    }
+
+    h3 {
+        font-size: 1.3em !important;
+    }
+
+    p, li {
+        font-size: 0.95em;
+        line-height: 1.6;
+    }
+
+    /* Code blocks */
+    pre {
+        padding: 1em !important;
+        margin: 1em 0 !important;
+        overflow-x: auto !important;
+        font-size: 0.85em !important;
+    }
+
+    pre code {
+        white-space: pre !important;
+    }
+
+    /* Tables - make scrollable */
+    table {
+        display: block;
+        overflow-x: auto;
+        white-space: nowrap;
+        max-width: 100%;
+    }
+
+    th, td {
+        padding: 8px !important;
+        font-size: 0.9em;
+    }
+
+    /* Hide fixed nav arrows on mobile - mdbook has its own mobile nav */
+    .nav-chapters.previous,
+    .nav-chapters.next {
+        position: static !important;
+        transform: none !important;
+        width: auto !important;
+        min-width: auto !important;
+        max-width: auto !important;
+    }
+
+    /* Menu bar */
+    .menu-title {
+        font-size: 1.2em !important;
+        letter-spacing: 1px;
+    }
+
+    /* Images - constrain to viewport */
+    img {
+        max-width: 100% !important;
+        height: auto !important;
+    }
+
+    /* Blockquotes */
+    blockquote {
+        padding: 0.8em;
+        margin: 0.8em 0;
+    }
+
+    /* Sidebar adjustments when visible */
+    .sidebar {
+        width: 100% !important;
+    }
+}
+
+/* Even smaller screens (phones in portrait) */
+@media screen and (max-width: 480px) {
+    .content main {
+        padding: 0.8em !important;
+    }
+
+    h1 {
+        font-size: 1.5em !important;
+    }
+
+    h2 {
+        font-size: 1.3em !important;
+        padding-left: 0.3em;
+    }
+
+    h3 {
+        font-size: 1.1em !important;
+    }
+
+    pre {
+        padding: 0.8em !important;
+        font-size: 0.8em !important;
+        border-radius: 8px !important;
+    }
+
+    th, td {
+        padding: 6px !important;
+        font-size: 0.85em;
+    }
+
+    .menu-title {
+        font-size: 1em !important;
+    }
+}
