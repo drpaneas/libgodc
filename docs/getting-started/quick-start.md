@@ -27,7 +27,7 @@ The `go.mod` file:
 ```
 module myproject
 
-go 1.23
+go 1.25
 ```
 
 ## Hello, Dreamcast!
