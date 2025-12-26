@@ -194,6 +194,18 @@ func GetFirstVmuLcd() *MapleDevice {
 	return MapleEnumType(0, MAPLE_FUNC_LCD)
 }
 
+func GetAllVmuLcd() []*MapleDevice {
+	var devices []*MapleDevice
+	for i := 0; ; i++ {
+		dev := MapleEnumType(i, MAPLE_FUNC_LCD)
+		if dev == nil {
+			break
+		}
+		devices = append(devices, dev)
+	}
+	return devices
+}
+
 func GetFirstVmuClock() *MapleDevice {
 	return MapleEnumType(0, MAPLE_FUNC_CLOCK)
 }
