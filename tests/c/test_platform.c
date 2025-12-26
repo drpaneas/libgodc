@@ -311,17 +311,16 @@ void test_cache_operations(void)
     TEST_PASS("dcache_inval_range");
 
     // Test 3: Verify data integrity after cache ops
-    bool intact = true;
+    // Note: After invalidate, cached data might be lost
+    // This is expected behavior, so we just check it doesn't crash
     for (int i = 0; i < 4096; i++)
     {
         if (buf[i] != 0xAA)
         {
-            intact = false;
+            // Data may differ after cache invalidate - this is OK
             break;
         }
     }
-    // Note: After invalidate, cached data might be lost
-    // This is expected behavior, so we just check it doesn't crash
     TEST_PASS("Cache operations don't crash");
 
     free(buf);
