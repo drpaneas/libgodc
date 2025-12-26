@@ -572,11 +572,11 @@ int main(void)
     test_large_object_boundary();
     // DISABLED: test_header_flags() - NOSCAN flag for NULL type is implementation-defined
     test_allocation_integrity();
-    
+
     // These tests don't call gc_collect() - safe to run
     test_size_encoding();
     test_heap_boundaries();
-    
+
     // DISABLED: These tests call gc_collect() which requires a valid goroutine context.
     // After the M:1 simplification, gc_collect() scans the current goroutine's stack,
     // which requires getg() to return a valid G*. C-level tests run without Go runtime.
