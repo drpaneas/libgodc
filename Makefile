@@ -2,7 +2,7 @@
 CC = sh-elf-gcc
 AR = sh-elf-ar
 AS = sh-elf-as
-KOS_BASE ?= /opt/toolchains/dc/kos
+KOS_BASE ?= $(shell if [ -d "$(HOME)/dreamcast/kos" ]; then echo "$(HOME)/dreamcast/kos"; else echo "/opt/toolchains/dc/kos"; fi)
 
 # -fno-split-stack: Disable split-stack, use fixed 64KB goroutine stacks.
 #                   This removes the GBR conflict with KOS _Thread_local.

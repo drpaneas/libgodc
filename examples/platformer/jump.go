@@ -49,3 +49,4 @@ func updatePlayerJump() {
 	checkPlatformCollisions()
 }
 
+

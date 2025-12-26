@@ -12,8 +12,9 @@
 GCCGO = sh-elf-gccgo
 CC = kos-cc
 
-# KOS paths
-KOS_BASE ?= /opt/toolchains/dc/kos
+# KOS paths - auto-detect from LIBGODC_DIR or use environment variable
+# Priority: 1) KOS_BASE env var, 2) relative to libgodc parent, 3) ~/dreamcast/kos
+KOS_BASE ?= $(shell if [ -d "$(HOME)/dreamcast/kos" ]; then echo "$(HOME)/dreamcast/kos"; else echo "/opt/toolchains/dc/kos"; fi)
 
 # Link against BUILD directory, not installed KOS lib
 LIBGODC_DIR = ..

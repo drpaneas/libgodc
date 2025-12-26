@@ -2,7 +2,7 @@
 GCCGO = sh-elf-gccgo
 AR = sh-elf-ar
 OBJCOPY = sh-elf-objcopy
-KOS_BASE ?= /opt/toolchains/dc/kos
+KOS_BASE ?= $(shell if [ -d "$(HOME)/dreamcast/kos" ]; then echo "$(HOME)/dreamcast/kos"; else echo "/opt/toolchains/dc/kos"; fi)
 
 # Source files (gccgo builds only - exclude _stub.go files)
 GO_SOURCES = types.go \
