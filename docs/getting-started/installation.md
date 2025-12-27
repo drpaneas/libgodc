@@ -31,6 +31,7 @@ environment. Run `godc doctor` to verify the installation.
 | `godc build` | Compile your game |
 | `godc run` | Build and run in emulator |
 | `godc run --ip` | Build and run on real Dreamcast via BBA |
+| `godc clean` | Remove build artifacts |
 | `godc doctor` | Check if everything is installed |
 | `godc update` | Update libgodc to latest version |
 | `godc env` | Show current paths |
