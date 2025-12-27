@@ -5,6 +5,9 @@
 - A Unix-like system (Linux, macOS, WSL2)
 - 4GB disk space for the toolchain
 - An x86_64 or arm64 host
+- **Go 1.23.3 or later** — required to install the `godc` CLI tool
+- **make** — required for building projects
+- **git** — required for toolchain setup and updates
 
 ## Quick Start
 

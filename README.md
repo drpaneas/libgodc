@@ -16,6 +16,8 @@ collection, goroutines, channels, and the core runtime functions.
 
 ## Quick Start
 
+**Prerequisites:** Go 1.23.3+, `make`, and `git` must be installed.
+
 ```sh
 go install github.com/drpaneas/godc@latest
 godc setup
