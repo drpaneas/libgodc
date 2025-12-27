@@ -65,6 +65,9 @@ Download the prebuilt toolchain for your platform:
 # Linux x86_64
 curl -LO https://github.com/drpaneas/dreamcast-toolchain-builds/releases/download/gcc15.1.0-kos2.2.1/dreamcast-toolchain-gcc15.1.0-kos2.2.1-linux-x86_64.tar.gz
 
+# Linux arm64 (aarch64)
+curl -LO https://github.com/drpaneas/dreamcast-toolchain-builds/releases/download/gcc15.1.0-kos2.2.1/dreamcast-toolchain-gcc15.1.0-kos2.2.1-linux-arm64.tar.gz
+
 # macOS arm64 (Apple Silicon)
 curl -LO https://github.com/drpaneas/dreamcast-toolchain-builds/releases/download/gcc15.1.0-kos2.2.1/dreamcast-toolchain-gcc15.1.0-kos2.2.1-darwin-arm64.tar.gz
 ```
