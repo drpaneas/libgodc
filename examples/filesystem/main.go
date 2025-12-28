@@ -215,17 +215,96 @@ func drawScreen() {
 	}
 }
 
+func testMode() {
+	println("=== Dirent/Stat Struct Test ===")
+	println()
+
+	// Test 1: List root directory
+	println("1. Listing /:")
+	dir := kos.Opendir("/")
+	if dir == nil {
+		println("   ERROR: Cannot open /")
+	} else {
+		count := 0
+		for {
+			entry := kos.Readdir(dir)
+			if entry == nil {
+				break
+			}
+			name := entry.GetName()
+			if name == "." || name == ".." {
+				continue
+			}
+			println("   ", name, "type:", entry.Type, "isDir:", entry.IsDir())
+			count++
+			if count >= 10 {
+				println("   ... (truncated)")
+				break
+			}
+		}
+		kos.Closedir(dir)
+	}
+	println()
+
+	// Test 2: List /cd directory
+	println("2. Listing /cd:")
+	dir = kos.Opendir("/cd")
+	if dir == nil {
+		println("   (no disc or cannot open)")
+	} else {
+		count := 0
+		for {
+			entry := kos.Readdir(dir)
+			if entry == nil {
+				break
+			}
+			name := entry.GetName()
+			if name == "." || name == ".." {
+				continue
+			}
+			println("   ", name, "type:", entry.Type, "isDir:", entry.IsDir())
+			count++
+			if count >= 10 {
+				println("   ... (truncated)")
+				break
+			}
+		}
+		kos.Closedir(dir)
+	}
+	println()
+
+	// Test 3: Test Stat on root
+	println("3. StatFile test on /:")
+	var st kos.Stat
+	result := kos.StatFile("/", &st)
+	println("   result:", result)
+	if result == 0 {
+		println("   Mode:", st.Mode, "Size:", st.Size)
+	}
+	println()
+
+	// Test 4: Test Seek/Total (your original fix)
+	println("4. Seek/Total test:")
+	fd := kos.Open("/cd/1ST_READ.BIN", kos.O_RDONLY)
+	if fd < 0 {
+		println("   (no test file available)")
+	} else {
+		total := kos.Total(fd)
+		println("   Total():", total)
+		endPos := kos.Seek(fd, 0, kos.SEEK_END)
+		println("   Seek(0, SEEK_END):", endPos)
+		startPos := kos.Seek(fd, 0, kos.SEEK_SET)
+		println("   Seek(0, SEEK_SET):", startPos)
+		kos.Close(fd)
+	}
+	println()
+
+	println("=== Test Complete ===")
+}
+
 func main() {
 	kos.VidSetMode(kos.DM_640x480, kos.PM_RGB555)
 
-	currentPath = "/"
-	entries = browseDirectory(currentPath)
-
-	for {
-		if !handleInput() {
-			break
-		}
-		drawScreen()
-		kos.TimerSpinSleep(16)
-	}
+	// Run test and exit automatically
+	testMode()
 }
