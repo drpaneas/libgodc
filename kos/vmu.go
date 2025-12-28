@@ -180,7 +180,13 @@ func ReadVmu(dev *MapleDevice, filename string) []byte {
 	var size int32
 
 	result := vmufsRead(uintptr(unsafe.Pointer(dev)), &cname[0], &bufPtr, &size)
-	if result < 0 || bufPtr == 0 || size <= 0 {
+
+	// Always free the buffer if KOS allocated one, even on error or zero size
+	if bufPtr != 0 {
+		defer cfree(bufPtr)
+	}
+
+	if result < 0 || size <= 0 {
 		return nil
 	}
 
@@ -189,9 +195,6 @@ func ReadVmu(dev *MapleDevice, filename string) []byte {
 	for i := int32(0); i < size; i++ {
 		data[i] = *(*byte)(unsafe.Pointer(bufPtr + uintptr(i)))
 	}
-
-	// Free the buffer allocated by vmufs_read()
-	cfree(bufPtr)
 
 	return data
 }
