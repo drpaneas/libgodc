@@ -199,6 +199,37 @@ body {
     background: rgba(0, 255, 102, 0.1) !important;
 }
 
+/* Scroll-spy active state for current section (mdBook's built-in) */
+.sidebar a.current-header,
+.sidebar .current-header {
+    color: var(--dc-orange) !important;
+    text-shadow: 0 0 8px var(--dc-orange);
+    background: rgba(255, 102, 0, 0.15) !important;
+}
+
+/* On-this-page section styling */
+.sidebar .on-this-page {
+    padding-left: 10px;
+    margin-top: 5px;
+}
+
+.sidebar .on-this-page a {
+    font-size: 0.9em;
+}
+
+.sidebar .header-item {
+    list-style: none;
+}
+
+.sidebar .header-in-summary {
+    color: var(--dc-light-blue) !important;
+    transition: all 0.2s ease;
+}
+
+.sidebar .header-in-summary:hover {
+    color: var(--dc-orange) !important;
+}
+
 /* =============================================================================
    MAIN CONTENT
    ============================================================================= */
@@ -245,7 +276,8 @@ h2 {
     font-size: 2.2em !important;
     text-shadow: 2px 2px 0 var(--dc-dark-blue);
     border-left: 4px solid var(--dc-orange);
-    padding-left: 0.5em;
+    padding-left: 1em;
+    margin-left: -0.5em;
 }
 
 h3 {
