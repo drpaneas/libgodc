@@ -259,8 +259,8 @@ type PlxTexture struct {
 }
 
 const (
-	PLX_FILTER_NONE     = 0
-	PLX_FILTER_BILINEAR = 2
+	PLX_FILTER_NONE     = 0 // No filtering (point sample)
+	PLX_FILTER_BILINEAR = 1 // Bilinear interpolation
 )
 
 const (

@@ -104,8 +104,8 @@ func PlxVertFfp(flags uint32, x, y, z, a, r, g, b, u, v float32)                
 func PlxSprInp(wi, hi, x, y, z float32, color uint32) {}
 
 const (
-	PLX_FILTER_NONE     = 0
-	PLX_FILTER_BILINEAR = 2
+	PLX_FILTER_NONE     = 0 // No filtering (point sample)
+	PLX_FILTER_BILINEAR = 1 // Bilinear interpolation
 )
 
 const (

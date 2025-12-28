@@ -151,20 +151,27 @@ func CdromGetStatus() (int32, int32, int32) {
 }
 
 const (
-	CD_STATUS_BUSY    = 0
-	CD_STATUS_PAUSED  = 1
-	CD_STATUS_STANDBY = 2
-	CD_STATUS_PLAYING = 3
-	CD_STATUS_SEEKING = 4
-	CD_STATUS_OPEN    = 6
-	CD_STATUS_NO_DISC = 7
+	CD_STATUS_READ_FAIL int32 = -1 // Read failed
+	CD_STATUS_BUSY      int32 = 0  // Drive busy
+	CD_STATUS_PAUSED    int32 = 1  // Paused
+	CD_STATUS_STANDBY   int32 = 2  // Standby
+	CD_STATUS_PLAYING   int32 = 3  // Playing
+	CD_STATUS_SEEKING   int32 = 4  // Seeking
+	CD_STATUS_SCANNING  int32 = 5  // Scanning
+	CD_STATUS_OPEN      int32 = 6  // Tray open
+	CD_STATUS_NO_DISC   int32 = 7  // No disc
+	CD_STATUS_RETRY     int32 = 8  // Retry
+	CD_STATUS_ERROR     int32 = 9  // Error
+	CD_STATUS_FATAL     int32 = 12 // Fatal error
 )
 
 const (
-	CD_CDDA    = 0x00
-	CD_CDROM   = 0x10
-	CD_CDROMXA = 0x20
-	CD_GDROM   = 0x80
+	CD_CDDA    int32 = 0x00 // Audio CD
+	CD_CDROM   int32 = 0x10 // CD-ROM
+	CD_CDROMXA int32 = 0x20 // CD-ROM XA
+	CD_CDI     int32 = 0x30 // CD-i
+	CD_GDROM   int32 = 0x80 // GD-ROM
+	CD_FAIL    int32 = 0xf0 // Detection failed
 )
 
 func gostring(ptr uintptr) string {

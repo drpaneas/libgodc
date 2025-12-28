@@ -108,17 +108,19 @@ func DrawLcd(dev *MapleDevice, bitmap []byte) int32 {
 
 const VMU_ICON_SIZE = 32 * 32 / 2
 
+// VmuPkg matches KOS vmu_pkg_t struct layout exactly
 type VmuPkg struct {
-	DescShort     [16]byte
-	DescLong      [32]byte
-	AppId         [16]byte
-	IconCnt       int32
-	IconAnimSpeed int32
-	EyecatchType  int32
-	DataLen       int32
-	IconData      unsafe.Pointer
-	EyecatchData  unsafe.Pointer
-	Data          unsafe.Pointer
+	DescShort     [20]byte       // Short description (max 20 chars)
+	DescLong      [36]byte       // Long description (max 36 chars)
+	AppId         [20]byte       // Application ID (max 20 chars)
+	IconCnt       int32          // Number of icons
+	IconAnimSpeed int32          // Icon animation speed
+	EyecatchType  int32          // Eyecatch type (VMUPKG_EC_*)
+	DataLen       int32          // Length of data
+	IconPal       [16]uint16     // Icon palette (ARGB4444)
+	IconData      unsafe.Pointer // Icon bitmap data
+	EyecatchData  unsafe.Pointer // Eyecatch data
+	Data          unsafe.Pointer // Save data
 }
 
 const (
@@ -135,8 +137,9 @@ func vmuPkgBuild(pkg uintptr, outPtr *uintptr, outSize *int32) int32
 func vmuPkgLoadIcon(pkg uintptr, path *byte) int32
 
 const (
-	VMUFS_VMUGAME = 1
-	VMUFS_NOCOPY  = 2
+	VMUFS_OVERWRITE = 1 // Overwrite existing files
+	VMUFS_VMUGAME   = 2 // This file is a VMU game
+	VMUFS_NOCOPY    = 4 // Set the no-copy flag
 )
 
 //extern vmufs_write
