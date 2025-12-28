@@ -67,3 +67,7 @@ core.*
 *.bak
 *.orig
 book/
+
+# Example go.mod files (not needed for build)
+examples/hello/go.mod
+examples/hello_screen/go.mod
