@@ -31,11 +31,13 @@ func PngLoadTexture(filename string, mask int32) (tex PvrPtr, w, h uint32, err i
 	return
 }
 
+// snd_stream_init takes no arguments and returns int (dc/sound/stream.h)
+//
 //extern snd_stream_init
-func sndStreamInit(callback unsafe.Pointer)
+func sndStreamInit() int32
 
-func SndStreamInit() {
-	sndStreamInit(nil)
+func SndStreamInit() int32 {
+	return sndStreamInit()
 }
 
 //extern snd_stream_shutdown

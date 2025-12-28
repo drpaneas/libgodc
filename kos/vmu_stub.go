@@ -9,15 +9,17 @@ const (
 	VMU_SCREEN_HEIGHT = 32
 )
 
+// VmuFb matches KOS vmufb_t: uint32_t data[VMU_SCREEN_WIDTH]
+// Using uint32 array ensures 4-byte alignment required by KOS.
 type VmuFb struct {
-	data [VMU_SCREEN_WIDTH * VMU_SCREEN_HEIGHT / 8]byte
+	data [VMU_SCREEN_WIDTH]uint32
 }
 
 func NewVmuFb() *VmuFb                                  { panic("kos: not on Dreamcast") }
 func (fb *VmuFb) Clear()                                { panic("kos: not on Dreamcast") }
 func (fb *VmuFb) PaintArea(x, y, w, h int, data []byte) { panic("kos: not on Dreamcast") }
-func (fb *VmuFb) Present(dev *MapleDevice) int32        { panic("kos: not on Dreamcast") }
-func (fb *VmuFb) PrintString(font *VmuFont, x, y, w, h, line int, str string) int32 {
+func (fb *VmuFb) Present(dev *MapleDevice)              { panic("kos: not on Dreamcast") }
+func (fb *VmuFb) PrintString(font *VmuFont, x, y, w, h, line int, str string) {
 	panic("kos: not on Dreamcast")
 }
 

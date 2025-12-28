@@ -2,8 +2,6 @@
 
 package kos
 
-import "unsafe"
-
 const (
 	PNG_NO_ALPHA   int32 = 0
 	PNG_MASK_ALPHA int32 = 1
@@ -19,6 +17,6 @@ func PngLoadTexture(filename string, mask int32) (tex PvrPtr, w, h uint32, err i
 	return 0, 0, 0, -1
 }
 
-func sndStreamInit(callback unsafe.Pointer) {}
-func SndStreamInit()                        {}
-func SndStreamShutdown()                    {}
+func sndStreamInit() int32  { return -1 }
+func SndStreamInit() int32  { return -1 }
+func SndStreamShutdown()    {}

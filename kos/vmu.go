@@ -9,8 +9,10 @@ const (
 	VMU_SCREEN_HEIGHT = 32
 )
 
+// VmuFb matches KOS vmufb_t: uint32_t data[VMU_SCREEN_WIDTH]
+// Using uint32 array ensures 4-byte alignment required by KOS.
 type VmuFb struct {
-	data [VMU_SCREEN_WIDTH * VMU_SCREEN_HEIGHT / 8]byte
+	data [VMU_SCREEN_WIDTH]uint32
 }
 
 func NewVmuFb() *VmuFb {
@@ -36,14 +38,16 @@ func (fb *VmuFb) PaintArea(x, y, w, h int, data []byte) {
 		uintptr(unsafe.Pointer(&data[0])))
 }
 
+// vmufb_present is void in KOS (dc/vmu_fb.h)
+//
 //extern vmufb_present
-func vmufbPresent(fb uintptr, dev uintptr) int32
+func vmufbPresent(fb uintptr, dev uintptr)
 
-func (fb *VmuFb) Present(dev *MapleDevice) int32 {
+func (fb *VmuFb) Present(dev *MapleDevice) {
 	if dev == nil {
-		return -1
+		return
 	}
-	return vmufbPresent(uintptr(unsafe.Pointer(&fb.data[0])),
+	vmufbPresent(uintptr(unsafe.Pointer(&fb.data[0])),
 		uintptr(unsafe.Pointer(dev)))
 }
 
@@ -62,16 +66,18 @@ func GetVmuFont() *VmuFont {
 	return (*VmuFont)(unsafe.Pointer(ptr))
 }
 
+// vmufb_print_string_into is void in KOS (dc/vmu_fb.h)
+//
 //extern vmufb_print_string_into
-func vmufbPrintStringInto(fb uintptr, font uintptr, x, y, w, h, line int32, str *byte) int32
+func vmufbPrintStringInto(fb uintptr, font uintptr, x, y, w, h, line int32, str *byte)
 
-func (fb *VmuFb) PrintString(font *VmuFont, x, y, w, h, line int, str string) int32 {
+func (fb *VmuFb) PrintString(font *VmuFont, x, y, w, h, line int, str string) {
 	if font == nil {
-		return -1
+		return
 	}
 	cstr := make([]byte, len(str)+1)
 	copy(cstr, str)
-	return vmufbPrintStringInto(uintptr(unsafe.Pointer(&fb.data[0])),
+	vmufbPrintStringInto(uintptr(unsafe.Pointer(&fb.data[0])),
 		uintptr(unsafe.Pointer(font)),
 		int32(x), int32(y), int32(w), int32(h), int32(line),
 		&cstr[0])
@@ -158,6 +164,11 @@ func WriteVmu(dev *MapleDevice, filename string, data []byte, flags int32) int32
 //extern vmufs_read
 func vmufsRead(dev uintptr, filename *byte, outBuf *uintptr, outSize *int32) int32
 
+//extern free
+func cfree(ptr uintptr)
+
+// ReadVmu reads a file from VMU. The buffer returned by vmufs_read() is
+// malloc'd by KOS, so we must free it after copying the data.
 func ReadVmu(dev *MapleDevice, filename string) []byte {
 	if dev == nil {
 		return nil
@@ -173,10 +184,14 @@ func ReadVmu(dev *MapleDevice, filename string) []byte {
 		return nil
 	}
 
+	// Copy data from malloc'd buffer to Go slice
 	data := make([]byte, size)
 	for i := int32(0); i < size; i++ {
 		data[i] = *(*byte)(unsafe.Pointer(bufPtr + uintptr(i)))
 	}
+
+	// Free the buffer allocated by vmufs_read()
+	cfree(bufPtr)
 
 	return data
 }
