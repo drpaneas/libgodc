@@ -439,7 +439,7 @@ We ran the KOS pvrmark benchmark (flat-shaded triangles, no textures) on real Dr
 ```
 
 **Analysis:**
-- The 18% overhead comes from Go→C FFI calls and loop bounds checking
+- The 18% overhead comes from bounds checking, slice header overhead, and gccgo code generation differences (not FFI — `//extern` compiles to direct `jsr` calls)
 - `GODC_FAST=1` improves performance by ~3.6% via aggressive optimization
 - For real games with textures, lighting, and game logic, this difference is negligible
 - **14,333 flat-shaded triangles at 60fps is plenty for actual gameplay**
