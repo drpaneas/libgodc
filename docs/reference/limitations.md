@@ -151,7 +151,7 @@ events := make(chan Event)
 
 // Buffered: reduced contention
 events := make(chan Event, 16)
-```go
+```
 
 ## Language Features
 
@@ -210,7 +210,7 @@ var x float32 = 3.14
 
 // SLOW: Software emulation
 var y float64 = 3.14159265358979
-```c
+```
 
 Avoid `float64` in hot paths. The compiler flag `-m4-single` makes all FPU
 operations single precision, but libraries may still use doubles.
