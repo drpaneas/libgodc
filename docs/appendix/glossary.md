@@ -32,7 +32,64 @@ The internal structure representing a Go channel. Contains the buffer, send/rece
 A threading model where many goroutines (M) run on one OS thread (1). All goroutines share a single CPU, providing concurrency but not parallelism.
 
 ### Root
-A starting point for garbage collection tracing. Roots include global variables, stack variables, and CPU registers that contain pointers.
+A root is a place outside the GC heap where the collector looks first for
+pointers into GC-managed memory. The collector must start there because, at the
+beginning of GC, it does not yet know which heap objects are live. It first
+scans the roots, then follows any heap pointers it finds, then follows pointers
+inside those objects, and so on.
+
+In libgodc, roots include compiler-registered globals, goroutine stacks,
+the `G` structs that hold per-goroutine runtime metadata (defer chain, panic
+state, etc.), and explicit C roots registered with `gc_add_root()`. There is
+no separate explicit register scan in the current implementation.
+
+Go example:
+
+```go
+// currentLevel itself is outside GC-managed memory.
+// but it holds a pointer to the Level struct, on the GC heap.
+var currentLevel *Level // global variable: root
+
+func tick() {
+    player := &Player{}   // local variable on the current stack: root
+    weapon := &Weapon{}   // local variable on the current stack: root
+    player.Weapon = weapon
+    currentLevel.Player = player
+
+    // During GC:
+    // 1. The collector sees `currentLevel`, `player`, and `weapon` in the roots.
+    // 2. It follows those pointers into the heap.
+    // 3. It then follows `player.Weapon`.
+    //
+    // So `player` and `weapon` stay alive, even though `weapon` is not itself
+    // a global variable. It is reachable from a root.
+}
+```
+
+C example:
+
+```c
+#include "gc_semispace.h"
+
+void example(void) {
+    void *player = gc_alloc(sizeof(void *), NULL);
+    void *weapon = gc_alloc(32, NULL);
+
+    *(void **)player = weapon; // player points to weapon
+    weapon = NULL;             // now only player still reaches that object
+
+    gc_add_root(&player);      // the variable `player` is an explicit root
+    gc_collect();
+
+    // During GC:
+    // 1. The collector sees `player` in the explicit root table.
+    // 2. It follows `player` into the GC heap, so that object stays alive.
+    // 3. It then follows the pointer stored inside `player`, so the `weapon`
+    //    object also stays alive even though it was not itself registered as a root.
+
+    gc_remove_root(&player);
+}
+```
 
 ### Run Queue
 A list of goroutines that are ready to execute. The scheduler picks goroutines from this queue.
@@ -119,37 +176,34 @@ The 8byte structure representing a Go string: a pointer to the character data an
 
 ## Performance Numbers
 
-Reference benchmarks from real Dreamcast hardware (200MHz SH4).
+The source tree includes `tests/bench_architecture.go`, which reports these
+metrics when run on Dreamcast hardware.
 
-*Verified using `tests/bench_architecture.elf`:*
-
-| Operation | Time | Notes |
-||||
-| `runtime.Gosched()` | 120 ns | Minimal yield |
-| Direct function call | 140 ns | Baseline comparison |
-| Buffered channel op | 1,459 ns | ~1.5 μs |
-| Context switch | 6,634 ns | ~6.6 μs, full register save/restore |
-| Unbuffered channel roundtrip | 12,782 ns | ~13 μs, send + receive |
-| Goroutine spawn + run | 33,659 ns | ~34 μs, 240× overhead vs direct call |
+| Benchmark | Output | Notes |
+|---|---|---|
+| `runtime.Gosched()` | ns per yield | Tight-loop yield benchmark |
+| Baseline comparison | ns per inline-loop iteration | Rough baseline only; not a direct function call |
+| Buffered channel | ns per operation | Sends and receives on a buffered channel |
+| Context switch | ns per switch | Derived from ping-pong goroutines |
+| Unbuffered channel roundtrip | ns per roundtrip | Send + receive over an unbuffered channel |
+| Goroutine spawn + run | ns per spawn | Create, schedule, run, and receive |
 
 ### GC Pause Times
 
-| Scenario | Pause | Notes |
-||||
-| Minimal/bypass (≥128 KB objects) | 73 μs | Objects bypass GC heap |
-| 64 KB live data | 2,199 μs | ~2.2 ms |
-| 32 KB live data | 6,172 μs | ~6.2 ms |
+`bench_architecture` forces GC with retained allocations of 32, 64, 128, 256,
+512, and 1024 KB, and reports pause time in microseconds for each case.
 
-> **Note:** Objects ≥64 KB bypass the GC heap and go directly to `malloc`, hence the minimal pause. The 32 KB scenario with many small objects shows the highest pause because more objects must be scanned and copied.
+> **Note:** With the default configuration, only allocations strictly larger
+> than 64 KB bypass the GC heap and go directly to `malloc`.
 
 ### Memory Configuration
 
 | Parameter | Value |
-|||
+|---|---|
 | Goroutine stack | 64 KB |
 | Context size | 64 bytes |
 | GC header | 8 bytes |
-| Large object threshold | 64 KB |
+| Large object threshold | 64 KB (`size > 64 KB` bypasses the GC heap) |
 
-Run `tests/bench_architecture.elf` on your hardware to verify these numbers.
+Run `tests/bench_architecture.elf` on your hardware for current numbers.
 
