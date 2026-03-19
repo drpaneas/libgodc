@@ -65,7 +65,7 @@ libgodc uses three allocation paths:
 
 **1. GC Heap (for Go objects)**
 
-Small, frequentlyallocated objects go here. The semispace collector manages
+Small, frequently-allocated objects go here. The semispace collector manages
 them automatically. Implementation: `gc_heap.c`, `gc_copy.c`.
 
 Implementation of the allocation in simple pseudocode:
@@ -81,11 +81,11 @@ void *gc_alloc(size_t size, type_descriptor *type) {
     alloc_ptr += size;
     return obj;
 }
-```go
+```
 
 This is simplified. The real code in `gc_heap.c` also handles large objects
 (>64KB bypass the GC heap and go straight to malloc), alignment edge cases,
-and gc_percent threshold checks. But the core is exactly this: bump a pointer.
+and `gc_percent` threshold checks. But the core is exactly this: bump a pointer.
 
 The bump allocator is the fastest possible allocation strategy. Deallocation
 happens during collectionlive objects are copied, dead objects are forgotten.
@@ -103,13 +103,13 @@ func spawnEnemy() *Enemy {
 **2. KOS Heap (for large objects)**
 
 Objects larger than 64KB bypass the GC entirely. This is correct for game
-assetstextures, audio buffers, and mesh data are typically loaded once and
+assets-textures, audio buffers, and mesh data are typically loaded once and
 never freed during gameplay.
 
 ```go
 // This goes to KOS malloc, not GC:
 texture := make([]byte, 256*256*2)  // 128KB texture
-```c
+```
 
 Large objects use `malloc()` internally and are not tracked by the GC.
 To free them, use `runtime.FreeExternal`:
@@ -168,7 +168,7 @@ func processAudio() {
 
 ### Object Header
 
-Every GC object has an 8byte header. The GC needs to know each object's
+Every GC object has an 8-byte header. The GC needs to know each object's
 size (to copy it) and whether it contains pointers (to scan them). Storing
 this inline costs 8 bytes per object but makes lookup instant (`ptr  8`).
 
@@ -188,7 +188,7 @@ bytes (4 data + 8 header). This is why many small allocations hurt more than
 fewer large ones.
 
 The NoScan bit is critical for performance. Objects containing only integers,
-floats, or other nonpointer types skip GC scanning entirelythe collector
+floats, or other non-pointer types skip GC scanning entirely - the collector
 just copies them without inspecting their contents.
 
 The practical takeaway: prefer value types over pointer types when possible.
@@ -204,12 +204,12 @@ mesh := make([]*Vertex, 1000)
 
 ## Garbage Collection
 
-### Algorithm: Cheney's SemiSpace Collector
+### Algorithm: Cheney's Semispace Collector
 
 The heap is divided into two semispaces of equal size. Only one is active
 at any time. When the active space fills up:
 
-1. Stop all goroutines (stoptheworld)
+1. Stop all goroutines (`stoptheworld`)
 2. Copy all live objects to the other space
 3. Update all pointers to point to new locations
 4. Switch active space
@@ -301,7 +301,7 @@ static void gc_scan_roots(void)
     // Scan explicit roots (gc_add_root)
     for (int i = 0; i < gc_root_table.count; i++) { ... }
 
-    // Scan compilerregistered roots (registerGCRoots)
+    // Scan compiler registered roots (registerGCRoots)
     gc_scan_compiler_roots();
 
     // Scan current stack
@@ -312,10 +312,10 @@ static void gc_scan_roots(void)
 }
 ```
 
-1. **Global variables**  Registered by gccgogenerated code via
+1. **Global variables**  Registered by `gccgo` generated code via
    `registerGCRoots()`. Each package contributes a root list.
 
-2. **Goroutine stacks**  Scanned conservatively. Every aligned pointersized
+2. **Goroutine stacks**  Scanned conservatively. Every aligned pointer-sized
    value that points into the heap is treated as a potential pointer.
 
 3. **Explicit roots**  Optional. If you write C code that holds pointers to
@@ -350,7 +350,7 @@ Context switches happen only at explicit yield points:
  Channel operations (send, receive, select)
  `runtime.Gosched()`
  `time.Sleep()` and timer waits
- Blocking I/O
+ Blocking I/O.
 
 A goroutine in a tight CPU loop will monopolize the processor. There is no
 preemption.
@@ -364,7 +364,7 @@ faster, and sufficient for games.
 ### Run Queue Structure
 
 The scheduler maintains a simple FIFO run queue. Goroutines are added to
-the tail and removed from the head. This is simpler than prioritybased
+the tail and removed from the head. This is simpler than priority-based
 scheduling and sufficient for game workloads where you control when each
 goroutine yields.
 
@@ -374,7 +374,7 @@ runq_put(gp);   // Add to tail
 gp = runq_get(); // Remove from head
 ```
 
-For realtime requirements, structure your code so timesensitive work
+For real-time requirements, structure your code so time-sensitive work
 runs on the main goroutine or yields frequently.
 
 ### Context Switching
@@ -383,9 +383,9 @@ Each goroutine saves 64 bytes of CPU state when it yields:
 
 ```c
 typedef struct sh4_context {
-    uint32_t r8, r9, r10, r11, r12, r13, r14;  // Calleesaved
+    uint32_t r8, r9, r10, r11, r12, r13, r14;  // Callee-saved
     uint32_t sp, pr, pc;                        // Special registers
-    uint32_t fr12, fr13, fr14, fr15;           // FPU calleesaved
+    uint32_t fr12, fr13, fr14, fr15;           // FPU callee-saved
     uint32_t fpscr, fpul;                       // FPU control
 } sh4_context_t;
 ```
@@ -407,7 +407,7 @@ __go_swapcontext:
 
 ### FPU Context
 
-Every context switch saves floatingpoint registers, even if your goroutine
+Every context switch saves floating-point registers, even if your goroutine
 only uses integers. This costs ~50 extra cycles per switch.
 
 ```go
@@ -416,16 +416,16 @@ go audioDecoder()   // Integer PCM math
 go networkHandler() // Packet parsing
 ```
 
-This is a tradeoff: always saving FPU is slower but correct. A goroutine
+This is a trade-off: always saving FPU is slower but correct. A goroutine
 that unexpectedly uses a float won't corrupt another's FPU state.
 
 ## Goroutine Structure
 
 ```c
 typedef struct G {
-    // ABICRITICAL: gccgo expects these at specific offsets
-    PanicRecord *_panic;      // Offset 0: innermost panic
-    GccgoDefer *_defer;       // Offset 4: innermost defer
+    // ABI-CRITICAL: gccgo expects these at specific offsets
+    PanicRecord *_panic;      // Offset 0: inner-most panic
+    GccgoDefer *_defer;       // Offset 4: inner-most defer
 
     // Scheduling
     Gstatus atomicstatus;
@@ -473,8 +473,8 @@ See `goroutine.h` for the authoritative definition.
 4. **Waiting**  Parked on channel, timer, or I/O
 5. **Dead**  Function returned, queued for cleanup
 
-Dead goroutines are reclaimed after a grace period (epochbased reclamation)
-to ensure no dangling sudog references from channel wait queues.
+Dead goroutines are reclaimed after a grace period (epoch-based reclamation)
+to ensure no dangling `sudog` references from channel wait queues.
 
 ## Channels
 
@@ -501,9 +501,9 @@ typedef struct hchan {
 ### Unbuffered Channels
 
 Send blocks until a receiver arrives. Receive blocks until a sender arrives.
-When both are ready, data transfers directlyno buffering.
+When both are ready, data transfers directly-no buffering.
 
-This is the fundamental synchronization primitive: rendezvous.
+This is the fundamental synchronization primitive: rendez-vous.
 
 ### Buffered Channels
 
@@ -545,15 +545,15 @@ typedef struct GccgoDefer {
     bool makefunccanrecover;    // MakeFunc recover permission
     bool heap;                  // Whether heap allocated
 } GccgoDefer;  // 32 bytes total
-```go
+```
 
 ### Panic and Recover
 
-Userinitiated panic (`panic()`) is recoverable via `recover()` in a deferred
+User-initiated panic (`panic()`) is recoverable via `recover()` in a deferred
 function. Implementation uses `setjmp`/`longjmp` with checkpoints.
 
 Runtime panics (nil dereference, bounds check, divide by zero) are not
-recoverablethey crash immediately with a diagnostic.
+recoverable-they crash immediately with a diagnostic.
 
 Why? Recovering from a bounds check failure would leave the program in an
 undefined state. It's better to crash clearly than corrupt silently.
@@ -562,11 +562,11 @@ undefined state. It's better to crash clearly than corrupt silently.
 
 ### Type Descriptors
 
-gccgo generates type descriptors for every Go type. libgodc uses these for:
+`gccgo` generates type descriptors for every Go type. libgodc uses these for:
 
- GC pointer scanning (which fields contain pointers?)
- Interface method dispatch (which methods does this type implement?)
- Reflection (what is this type's name and structure?)
+GC pointer scanning (which fields contain pointers?)  
+Interface method dispatch (which methods does this type implement?)  
+Reflection (what is this type's name and structure?)  
 
 ```c
 typedef struct __go_type_descriptor {
@@ -582,7 +582,7 @@ typedef struct __go_type_descriptor {
 
 ### Interface Tables
 
-Interface dispatch uses precomputed method tables. When you write:
+Interface dispatch uses pre-computed method tables. When you write:
 
 ```go
 var w io.Writer = os.Stdout
@@ -596,20 +596,20 @@ function pointers for all interface methods.
 
 ### Register Allocation
 
- **r0r7**: Callersaved (arguments, scratch)
- **r8r14**: Calleesaved (preserved across calls)
- **r15**: Stack pointer
- **pr**: Procedure return (return address)
- **GBR**: Reserved for KOS `_Thread_local`
+**r0r7**: Caller-saved (arguments, scratch)  
+**r8r14**: Calleesaved (preserved across calls)  
+**r15**: Stack pointer  
+**pr**: Procedure return (return address)  
+**GBR**: Reserved for KOS `_Thread_local`  
 
 We do not use GBR for goroutine TLS. Instead, we use a global `current_g`
 pointer. This avoids conflicts with KOS and simplifies context switching.
 
 ### FPU Mode
 
-libgodc uses singleprecision mode (`m4single`). The SH4 FPU is fast in
-singleprecision but slow in doubleprecision. All `float64` operations
-generate software emulation callsavoid them in hot paths.
+libgodc uses single-precision mode (`m4single`). The SH4 FPU is fast in
+single-precision but slow in double-precision. All `float64` operations
+generate software emulation calls-avoid them in hot paths.
 
 ### Cache Considerations
 
@@ -661,12 +661,12 @@ mov.l   @(32, r4), r0    ! Load G>context at offset 32
 ```
 
 If someone changes the G struct in C (adds/removes/reorders fields), the assembly
-breaks silentlyit reads garbage from wrong offsets. This is a classic embedded
-systems bug: C struct layout changes invisibly break handwritten assembly.
+breaks silently-it reads garbage from wrong offsets. This is a classic embedded
+systems bug: C struct layout changes invisibly break hand-written assembly.
 
 ### The Solution
 
-We use a threelayer defense:
+We use a three-layer defense:
 
 **1. Generated Header (`asm-offsets.h`)**
 
@@ -721,7 +721,7 @@ In games, struct layout bugs cause symptoms like:
  Goroutines resume with corrupted registers
  Context switches overwrite random memory
  FPU state leaks between goroutines
- Panics with nonsensical stack traces
+ Panics with non-sensical stack traces
 
 These are nearly impossible to debug. The offset verification catches them at
 build time (or worst case, at startup) instead of during the final boss fight.
@@ -730,17 +730,18 @@ build time (or worst case, at startup) instead of during the final boss fight.
 
 Measured on real Dreamcast hardware (SH4 @ 200MHz), verified December 2025:
 
-| Operation              | Time      | Notes                          |
-|                        |           |                                |
-| Gosched yield          | 120 ns    | Minimal scheduler roundtrip    |
-| Direct call            | 140 ns    | Baseline comparison            |
-| Buffered channel op    | ~1.5 μs   | Send to ready receiver         |
-| Context switch         | ~6.6 μs   | Full goroutine switch          |
-| Unbuffered channel     | ~13 μs    | Send + receive roundtrip       |
-| Goroutine spawn        | ~34 μs    | Create + schedule + run        |
-| GC pause (bypass)      | ~73 μs    | Objects ≥64KB bypass GC        |
-| GC pause (64KB live)   | ~2.2 ms   | Medium live set                |
-| GC pause (32KB live)   | ~6.2 ms   | Many small objects             |
+
+| Operation | Time | Notes |
+| --- | --- | ---- |
+| Gosched yield | 120 ns | Minimal scheduler roundtrip |
+| Direct call | 140 ns | Baseline comparison |
+| Buffered channel op | ~1.5 μs | Send to ready receiver |
+| Context switch | ~6.6 μs | Full goroutine switch |
+| Unbuffered channel | ~13 μs | Send + receive roundtrip |
+| Goroutine spawn | ~34 μs | Create + schedule + run |
+| GC pause (bypass) | ~73 μs | Objects ≥64KB bypass GC |
+| GC pause (64KB live) | ~2.2 ms | Medium live set |
+| GC pause (32KB live) | ~6.2 ms | Many small objects |
 
 Run `tests/bench_architecture.elf` to measure on your hardware.
 
@@ -751,7 +752,7 @@ Run `tests/bench_architecture.elf` to measure on your hardware.
 **Why gccgo instead of gc?**
 
 The standard Go compiler (gc) generates code for a completely different
-runtime. gccgo uses GCC's backend, which already supports SH4 targets.
+runtime. `gccgo` uses GCC's backend, which already supports SH4 targets.
 We replace libgo with libgodc; the compiler doesn't need modification.
 
 **Why semispace instead of marksweep?**
@@ -769,7 +770,7 @@ CPU. Cooperative scheduling is simpler, faster, and sufficient.
 **Why fixed stacks instead of growable?**
 
 Growable stacks require compiler support (stack probes) and runtime support
-(morestack). Fixed stacks work with any compiler flags and simplify the
+(more stack). Fixed stacks work with any compiler flags and simplify the
 runtime. 64KB is enough for typical game code.
 
 ## References
