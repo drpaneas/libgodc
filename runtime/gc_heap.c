@@ -1,5 +1,6 @@
 #include "gc_semispace.h"
 #include "type_descriptors.h"
+#include "runtime.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>

@@ -76,7 +76,7 @@ GO_BENCHMARKS = \
 	bench_goroutine_usecase
 
 # C tests (in c/ subdirectory)
-C_TESTS = test_gc_internals test_gc_edge test_platform test_gc_percent test_free_external
+C_TESTS = test_gc_internals test_gc_edge test_platform test_gc_percent test_free_external test_free_slice
 C_TEST_DIR = c
 
 # All test names
