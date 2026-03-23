@@ -1,5 +1,6 @@
 #include "gc_semispace.h"
 #include "type_descriptors.h"
+#include "runtime.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -249,6 +250,17 @@ void runtime_FreeExternal(void *ptr) __asm__("_runtime.FreeExternal");
 void runtime_FreeExternal(void *ptr)
 {
     gc_external_free(ptr);
+}
+
+/* Exposed to Go as runtime.FreeSlice for freeing large slice allocations */
+void runtime_FreeSlice(GoSlice *s) __asm__("_runtime.FreeSlice");
+void runtime_FreeSlice(GoSlice *s) {
+    if (s && s->__values) {
+        gc_external_free(s->__values);
+        s->__values   = NULL;
+        s->__count    = 0;
+        s->__capacity = 0;
+    }
 }
 
 #if GC_DEBUG
