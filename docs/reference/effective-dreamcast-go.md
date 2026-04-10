@@ -6,12 +6,13 @@ These patterns come from real debugging sessions with the libgodc runtime. Follo
 
 ## Memory Model
 
-| Resource | Limit | Notes |
-|----------|-------|-------|
-| Total RAM | 16 MB | Shared with VRAM, sound, OS |
-| GC Heap | 2 MB × 2 | Semispace collector, 4MB total |
-| Goroutine Stack | 64 KB | Fixed size, cannot grow |
-| Large Object Threshold | 64 KB | Objects larger bypass GC |
+| Resource | Default build config | Notes |
+|----------|----------------------|-------|
+| Total RAM | 16 MB main RAM | Dreamcast system RAM budget |
+| GC Heap | 2 MB × 2 | Default semispace size, configurable |
+| Spawned Goroutine Stack | 64 KB | Default fixed size, cannot grow |
+| Main Goroutine Stack | 128 KB | KOS main-thread stack by default |
+| Large Object Threshold | 64 KB | Objects strictly larger bypass the GC heap |
 
 ## 1. Pre-allocate During Loading
 
@@ -56,9 +57,12 @@ func DespawnParticle(index int) {
 }
 ```
 
-## 2. Respect the 64KB Stack Limit
+## 2. Respect the Default Stack Limits
 
-Each goroutine has a fixed 64KB stack. Unlike desktop Go, stacks cannot grow. Deep recursion or large local variables will crash your game.
+Spawned goroutines use a fixed 64KB stack by default. Unlike desktop Go,
+stacks cannot grow. The main goroutine uses the KOS main-thread stack instead
+(128KB by default), but deep recursion or large local variables are still a
+bad fit for this runtime.
 
 ### Bad: Large local arrays
 
@@ -150,7 +154,8 @@ func GetVisibleEnemies() []Enemy {
 
 ## 4. Minimize Goroutines
 
-Each goroutine consumes 64KB of stack space. 100 goroutines = 6.4MB RAM—40% of total Dreamcast memory!
+Each spawned goroutine consumes 64KB of stack space by default. 100 spawned
+goroutines = 6.4MB RAM.
 
 ### Bad: Goroutine per entity
 
@@ -234,7 +239,7 @@ func DrawHUD() {
     scoreText := fmt.Sprintf("Score: %d", score)  // Allocates!
     DrawText(scoreText)
 }
-```c
+```
 
 ### Good: Pre-render or avoid strings
 
@@ -254,21 +259,23 @@ func DrawScore(score int) {
 println("Debug:", value)
 ```
 
-## 7. Large Assets Bypass GC
+## 7. Large Assets Bypass the GC Heap
 
-Allocations over 64KB use `malloc` directly and are **not garbage collected**.
+Allocations larger than 64KB use `malloc` directly and are **not garbage
+collected**.
 
 ```go
-// This 128KB texture is NOT managed by GC
+// This 128KB texture is NOT managed by the GC heap
 texture := make([]byte, 256*256*2)
 
-// It will live forever (or until program exit)
-// This is usually fine - load assets once, keep forever
-```go
+// It is not freed automatically.
+// This is usually fine for load-once assets.
+```
 
 Implications:
 - Large slices don't pressure the GC
 - They also don't get freed automatically
+- A manual free path exists via `runtime.FreeExternal`
 - Perfect for textures, sounds, level data
 
 ## 8. Escape Analysis Awareness
@@ -418,8 +425,8 @@ for i := range arr { }         // Index iteration
 small := Vec3{1, 2, 3}         // Value types
 make([]T, 0, capacity)         // Pre-sized slices (at init)
 val, ok := m[key]              // Safe map access
-select { default: }            // Yield in loops
-runtime_checkpoint()           // For panic recovery
+select { default: }            // Yield when no case is ready
+runtime_checkpoint()           // Establish checkpoint before deferred recover
 ```
 
 ### AVOID (during gameplay)
@@ -431,49 +438,25 @@ new(T)                         // For small types
 go func() {}()                 // Excessive goroutines
 string + string                // String concatenation
 fmt.Sprintf()                  // Formatted strings
-recover()                      // Use runtime_checkpoint instead
+recover()                      // Not enough without a checkpoint
 for { busyWork() }             // Loops without yielding
 ```
 
-## 11. Panic/Recover Limitation
+## 11. Panic Recovery Is Limited
 
-Standard Go's `recover()` does **not work** on Dreamcast due to ABI differences. Use the `runtime_checkpoint()` pattern instead:
+libgodc implements `recover()`, but resumed execution currently depends on a
+checkpoint established before the code that may panic. A recovered panic
+longjmps back to that checkpoint.
 
-### Bad: Standard recover (won't work)
+Practical rules:
+- Plain `recover()` without a checkpoint is not enough.
+- Nil dereference, bounds, and divide-by-zero helpers currently go through the
+  same panic machinery as `panic()`.
+- Fatal `runtime_throw()` paths and interface type-assertion panic helpers
+  still abort immediately.
+- For gameplay code, avoid panic-based control flow and validate inputs early.
 
-```go
-func SafeCall() {
-    defer func() {
-        if r := recover(); r != nil {  // NEVER catches panics!
-            println("recovered")
-        }
-    }()
-    panic("oops")
-}
-```
-
-### Good: Use runtime_checkpoint
-
-```go
-import _ "unsafe"
-
-//go:linkname runtime_checkpoint runtime.runtime_checkpoint
-func runtime_checkpoint() int
-
-func SafeCall() (recovered bool) {
-    defer func() {
-        if runtime_checkpoint() != 0 {
-            recovered = true
-            return
-        }
-        // Normal cleanup here
-    }()
-    panic("oops")
-    return false
-}
-```go
-
-Most game code shouldn't need recover. Design to avoid panics:
+Most game code shouldn't need recovery. Design to avoid panics:
 - Check bounds before indexing
 - Validate inputs at entry points
 - Use `ok` form for map access: `val, ok := m[key]`
@@ -483,10 +466,10 @@ Most game code shouldn't need recover. Design to avoid panics:
 The Dreamcast scheduler is **cooperative**, not preemptive. Goroutines run until they yield.
 
 ### Goroutines yield when they:
-- Send/receive on channels
-- Call `select` (including with `default`)
-- Call explicit yield functions
-- Block on I/O
+- Block on channel operations
+- Call `select`/`default` when no case is ready
+- Call explicit yield functions such as `runtime.Gosched()`
+- Sleep or wait on timers
 
 ### Bad: Infinite loop without yielding
 
@@ -533,7 +516,8 @@ Because of cooperative scheduling:
 
 ## 13. Select with Default
 
-`select` with `default` is an efficient polling pattern that yields correctly:
+`select` with `default` is an efficient polling pattern that yields when no
+case is ready:
 
 ```go
 func pollChannels() {
@@ -545,7 +529,7 @@ func pollChannels() {
             handleResult(result)
         default:
             // No message ready - yields to other goroutines
-            // then returns immediately
+            // and then returns immediately
         }
         
         // Can do other work here
@@ -563,26 +547,25 @@ This pattern works well for:
 
 ### Goroutine Leak
 
-Dead goroutines retain ~160 bytes each (G struct only). The stack memory and
-TLS are properly reclaimed, and the G struct is kept in a free list for reuse
-by future goroutines. When you spawn a new goroutine, it reuses a G from the
-free list if available.
+The runtime contains a dead-goroutine queue and a `freegs` reuse path, but in
+the current source exited goroutines do not age into reclaimable state because
+`global_generation` is never advanced.
 
-If you spawn 10,000 goroutines that all exit without spawning new ones, you'll
-have ~1.6MB in the free list. This memory is reused when you spawn new
-goroutines. Monitor goroutine count with `runtime.NumGoroutine()`.
+In practice, high-churn spawn/exit patterns can retain goroutine state instead
+of recycling it promptly. Prefer long-lived goroutines and monitor goroutine
+count with `runtime.NumGoroutine()`.
 
-### Unrecoverable Runtime Panics
+### Panic Recovery Boundary
 
-User `panic()` is recoverable. Runtime panics are not:
+`panic()` participates in the panic/recover machinery, and nil/bounds/divide
+helpers currently do too.
 
-- Nil pointer dereference
-- Array/slice bounds check
-- Integer divide by zero
-- Stack overflow
+The hard boundary is elsewhere:
+- `recover()` without an earlier checkpoint is fatal
+- `runtime_throw()` failures abort immediately
+- Interface type-assertion panic helpers abort immediately
 
-These crash immediately. A bounds check failure means program invariants are
-violated—continuing would corrupt data.
+Treat panic recovery as a specialized escape hatch, not a normal game-code tool.
 
 ### 32-bit Pointers
 
@@ -620,8 +603,8 @@ dcache_inval_range((uintptr_t)ptr, size);  // After DMA read (HW -> CPU)
 
 - **reflect**: Basic type inspection only, no `reflect.MakeFunc`
 - **unsafe**: Works, but remember 4-byte pointers
-- **sync**: Mutexes work, but with M:1 scheduling no other goroutine runs
-  while you hold a lock—deadlock is impossible but starvation is easy
+- **sync**: Mutexes work, but deadlocks and starvation are still possible.
+  Avoid blocking or sleeping while holding locks.
 
 ### Compatibility
 
@@ -658,12 +641,13 @@ If your game crashes:
 1. **Stack overflow**: Reduce recursion, shrink local arrays
 2. **Nil pointer**: Check slice bounds, map existence
 3. **GC corruption**: Ensure pointers are valid (not into freed memory)
-4. **Panic without checkpoint**: Use `runtime_checkpoint()` for recovery
+4. **Panic recovery mismatch**: Recovery is checkpoint-based; plain `recover()`
+   is not enough
 
 ## Further Reading
 
-- `docs/DESIGN.md` - Runtime architecture
-- `docs/KOS_WRAPPERS.md` - Hardware access
+- `docs/reference/design.md` - Runtime architecture
+- `docs/reference/kos-wrappers.md` - Hardware access
 - `examples/` - Working game examples
 
 Console development is the art of saying 'no' to malloc.

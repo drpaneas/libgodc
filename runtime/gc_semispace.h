@@ -56,7 +56,7 @@ void runtime_throw(const char *s) __attribute__((noreturn));
 // │  forwarding_ptr (full 32-bit pointer)                   │
 // └──────────────────────────────────────────────────────────┘
 //
-// NOTE: Dreamcast RAM addresses (0x8C000000-0x8E000000) have bit 31 set,
+// NOTE: Retail Dreamcast RAM addresses in [0x8C000000, 0x8D000000) have bit 31 set,
 // so we CANNOT pack the forwarding pointer into size_and_flags. Instead,
 // we store it in the type field (which is unused after forwarding).
 

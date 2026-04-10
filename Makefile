@@ -23,8 +23,9 @@ OBJS = $(SRCS:.c=.o) runtime/runtime_sh4_minimal.o
 
 all: libgodc.a libgodcbegin.a
 
-# Generate struct offsets for assembly. Regenerate after changing G struct.
-# The offsets are verified at runtime by scheduler.c.
+# Generate the current asm-offsets.h placeholder artifact.
+# NOTE: runtime_sh4_minimal.S still uses hardcoded .equ offsets, and
+# scheduler.c does not verify them at runtime.
 runtime/asm-offsets.h: runtime/gen-offsets.c runtime/goroutine.h
 	@echo "Generating asm-offsets.h..."
 	@$(CC) $(CFLAGS) -S -o - $< 2>/dev/null | grep '#define' | sed 's/#define //' | \
@@ -65,18 +66,18 @@ clean:
 	rm -f tests/*.elf tests/*.o tests/c/*.o
 	$(MAKE) -C kos clean
 
-# Verify asm-offsets.h is up-to-date with current G struct layout.
-# This regenerates asm-offsets.h and checks if it matches the committed version.
+# Verify asm-offsets.h matches the current generated placeholder output.
+# NOTE: This does NOT validate the hardcoded .equ offsets in
+# runtime/runtime_sh4_minimal.S.
 # Run after modifying the G struct in goroutine.h or gen-offsets.c.
 #
 # The workflow for updating G struct:
 # 1. Modify runtime/goroutine.h (the authoritative definition)
 # 2. Update runtime/gen-offsets.c to match (copy struct layout)
-# 3. Run 'make check-offsets' - it will fail if out of sync
-# 4. Run 'make runtime/asm-offsets.h' to regenerate
-# 5. Update runtime/runtime_sh4_minimal.S with new offsets (if G_CONTEXT changed)
-# 6. Run 'make check-offsets' again - should pass now
-# 7. The runtime also verifies at startup (scheduler.c::verify_asm_offsets)
+# 3. Update runtime/runtime_sh4_minimal.S with new offsets (if G_CONTEXT changed)
+# 4. Run 'make runtime/asm-offsets.h' to regenerate the placeholder header
+# 5. Run 'make check-offsets' to ensure the placeholder output matches
+# 6. There is currently no runtime offset verification in scheduler.c
 check-offsets: runtime/gen-offsets.c runtime/goroutine.h
 	@echo "Checking asm-offsets.h synchronization..."
 	@$(CC) $(CFLAGS) -S -o /tmp/gen-offsets-check.s runtime/gen-offsets.c 2>/dev/null && \

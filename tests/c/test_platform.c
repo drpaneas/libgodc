@@ -8,6 +8,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <kos.h>
+#include "dc_platform.h"
 
 // Include libgodc headers
 // Only include goroutine.h which has full G definition
@@ -115,9 +116,9 @@ void test_stack_operations(void)
     void *sp;
     __asm__ volatile("mov r15, %0" : "=r"(sp));
 
-    // Stack should be in Dreamcast RAM range
+    // Stack should be in the retail Dreamcast RAM range.
     uintptr_t sp_addr = (uintptr_t)sp;
-    if (sp_addr >= 0x8C000000 && sp_addr < 0x8E000000)
+    if (sp_addr >= DC_RAM_START && sp_addr < DC_RAM_END)
     {
         TEST_PASS("Stack pointer in valid RAM range");
     }

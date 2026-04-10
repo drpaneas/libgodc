@@ -1,13 +1,15 @@
 /**
- * test_splitstack.c - C-level tests for split-stack (GBR) functionality
- * 
- * Regression test for: GBR must point to goroutine TLS for split-stack
- * 
+ * test_splitstack.c - C-level tests for split-stack (GBR) compatibility
+ *
+ * libgodc keeps goroutine state in global current_g/current_tls pointers.
+ * GBR remains owned by KOS, but the split-stack ABI offsets are still useful
+ * to verify because @(0, gbr) is what the SH-4 split-stack prologue would read.
+ *
  * This test verifies at the C/assembly level that:
- * 1. GBR register contains a valid pointer
- * 2. @(0, gbr) contains stack_guard (what split-stack prologue reads)
- * 3. TLS block fields are consistent
- * 4. Context switches preserve GBR correctly
+ * 1. GBR register contains a readable TLS-like block
+ * 2. @(0, gbr) reads the same value as offset 0 in that block
+ * 3. libgodc runtime globals are initialized after runtime_init()
+ * 4. current_g/current_tls stay separate from GBR-backed KOS TLS
  */
 
 #include <stdio.h>
@@ -19,6 +21,7 @@
 
 // Include runtime headers
 #define GODC_GOROUTINES 1
+#include "dc_platform.h"
 #include "../../runtime/goroutine.h"
 #include "../../runtime/runtime.h"
 
@@ -55,7 +58,16 @@ static inline void *read_gbr_register(void) {
  */
 static inline void *read_gbr_offset_0(void) {
     void *result;
-    __asm__ volatile("mov.l @(0, gbr), %0" : "=r"(result));
+    /*
+     * SH-4 only allows GBR-relative mov.l loads into r0.
+     * Mirror the split-stack prologue, then copy r0 into a compiler-chosen register.
+     */
+    __asm__ volatile(
+        "mov.l @(0, gbr), r0\n\t"
+        "mov r0, %0"
+        : "=&r"(result)
+        :
+        : "r0", "memory");
     return result;
 }
 
@@ -91,9 +103,9 @@ void test_gbr_valid_pointer(void) {
         return; // Can't continue
     }
     
-    // Test 2: GBR is in valid memory range (Dreamcast RAM: 0x8c000000 - 0x8e000000)
+    // Test 2: GBR is in valid memory range ([DC_RAM_START, DC_RAM_END))
     uintptr_t addr = (uintptr_t)gbr;
-    if (addr >= 0x8c000000 && addr < 0x8e000000) {
+    if (addr >= DC_RAM_START && addr < DC_RAM_END) {
         TEST_PASS("GBR in valid memory range");
     } else {
         printf("    GBR = %p (outside valid range)\n", gbr);
@@ -145,16 +157,17 @@ void test_gbr_tls_structure(void) {
         TEST_FAIL("current_g at offset 4 matches");
     }
     
-    // Test 3: current_g is not NULL
-    if (current_g_from_struct != NULL) {
-        TEST_PASS("current_g is not NULL");
+    // Test 3: runtime current_g is initialized after runtime_init()
+    if (current_g != NULL && getg() == current_g) {
+        TEST_PASS("current_g global is initialized");
     } else {
-        TEST_FAIL("current_g is not NULL");
+        printf("    current_g = %p, getg() = %p\n", (void *)current_g, (void *)getg());
+        TEST_FAIL("current_g global is initialized");
     }
     
     // Test 4: stack_guard is in valid range
     uintptr_t guard_addr = (uintptr_t)stack_guard_from_struct;
-    if (guard_addr >= 0x8c000000 && guard_addr < 0x8e000000) {
+    if (guard_addr >= DC_RAM_START && guard_addr < DC_RAM_END) {
         TEST_PASS("stack_guard in valid memory range");
     } else if (guard_addr == 0) {
         // May be uninitialized for main thread
@@ -167,7 +180,7 @@ void test_gbr_tls_structure(void) {
 }
 
 //=============================================================================
-// Test: TLS Matches Global current_tls
+// Test: Runtime TLS State
 //=============================================================================
 
 extern tls_block_t *current_tls;
@@ -178,21 +191,21 @@ void test_tls_consistency(void) {
     
     tls_block_t *gbr_tls = (tls_block_t *)read_gbr_register();
     
-    // Test 1: GBR matches current_tls global
-    if (gbr_tls == current_tls) {
-        TEST_PASS("GBR matches current_tls global");
+    // Test 1: runtime current_tls is initialized independently of GBR
+    if (current_tls != NULL && gbr_tls != current_tls) {
+        TEST_PASS("current_tls is initialized separately from GBR");
     } else {
         printf("    GBR: %p, current_tls: %p\n", (void *)gbr_tls, (void *)current_tls);
-        TEST_FAIL("GBR matches current_tls global");
+        TEST_FAIL("current_tls is initialized separately from GBR");
     }
     
-    // Test 2: TLS->current_g matches current_g global
-    if (gbr_tls && gbr_tls->current_g == current_g) {
-        TEST_PASS("TLS->current_g matches current_g global");
+    // Test 2: libgodc TLS points at the active G
+    if (current_tls && current_tls->current_g == current_g && current_g != NULL) {
+        TEST_PASS("current_tls->current_g matches current_g global");
     } else {
-        printf("    TLS->current_g: %p, current_g: %p\n", 
-               gbr_tls ? (void *)gbr_tls->current_g : NULL, (void *)current_g);
-        TEST_FAIL("TLS->current_g matches current_g global");
+        printf("    current_tls->current_g: %p, current_g: %p\n",
+               current_tls ? (void *)current_tls->current_g : NULL, (void *)current_g);
+        TEST_FAIL("current_tls->current_g matches current_g global");
     }
     
     // Test 3: getg() returns consistent value
@@ -302,6 +315,10 @@ int main(int argc, char *argv[]) {
     printf("This test verifies that GBR is correctly\n");
     printf("configured for split-stack support.\n");
     printf("\n");
+
+    printf("Initializing Go runtime...\n");
+    runtime_init();
+    printf("Runtime initialized.\n");
     
     // Run tests
     test_gbr_valid_pointer();

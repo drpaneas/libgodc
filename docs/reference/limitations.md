@@ -11,31 +11,25 @@ The Dreamcast has 16MB of RAM. No virtual memory, no swap, no second chance.
 
 Budget your memory:
 - KOS + drivers: ~1MB
-- Your code: ~1-3MB  
-- GC heap: 2MB active (4MB total, two semi-spaces)
-- Goroutine stacks: 64KB each
+- Your code: build-dependent
+- GC heap: 2MB active by default (4MB total, two semi-spaces)
+- Spawned goroutine stacks: 64KB each by default
+- Main goroutine stack: KOS main-thread stack (128KB by default)
 - Everything else: KOS malloc
 
 When you run out, you crash.
 
 ### Goroutine Memory Overhead
 
-Dead goroutines retain approximately 160 bytes each (G struct only).
-The stack memory and TLS are properly reclaimed, and the G struct is kept in a
-free list for reuse by future goroutines.
+The runtime contains a dead-goroutine queue and a `freegs` reuse path for `G`
+structs, but in the current source exited goroutines do not age into
+reclaimable state because `global_generation` is never advanced.
 
-**Why the free list?** Reusing G structs avoids repeated malloc/free overhead.
-When you spawn a new goroutine, it reuses a G from the free list if available.
+That means exited goroutines do not currently reach the cleanup path that would
+reclaim their stack and TLS and then recycle the `G` struct.
 
-**Impact:** If you spawn 10,000 goroutines that all exit without spawning new
-ones, you'll have ~1.6MB in the free list. This memory is reused when you spawn
-new goroutines.
-For a typical game session, this is rarely a problem if you design with
-long-lived goroutines.
-
-**Workaround:** Prefer long-lived goroutines or let the free list grow to a
-stable size. If you spawn and exit many goroutines, the G structs accumulate
-in the free list but are reused:
+**Workaround:** Prefer long-lived goroutines and avoid high-churn
+spawn/exit patterns:
 
 ```go
 // GOOD: Fixed set of long-lived goroutines
@@ -43,16 +37,16 @@ go audioHandler()      // Lives for entire game
 go inputPoller()       // Lives for entire game
 go gameLoop()          // Lives for entire game
 
-// OK: Spawning goroutines per-event (G structs are reused)
+// Risky today: spawning goroutines per-event can accumulate unreclaimed state
 for event := range events {
-    go handleEvent(event)  // ~160B stays in free list for reuse
+    go handleEvent(event)
 }
 ```
 
 ### GC Pause Times
 
-The garbage collector stops the world during collection. Pause times depend
-on live heap size:
+The garbage collector effectively stops the world for Go goroutines during
+collection. Pause times depend primarily on live heap size and object layout:
 
 | Live Heap | Pause    |
 |-----------|----------|
@@ -60,21 +54,29 @@ on live heap size:
 | 500KB     | 5-10ms   |
 | 1MB       | 10-20ms  |
 
-At 60fps, you have 16.6ms per frame. A 10ms GC pause causes visible stutter.
+At 60fps, you have 16.6ms per frame. A 10ms GC pause consumes most of that
+budget and can cause visible stutter.
 
 **Workarounds:**
 
 1. Keep the live heap small (<500KB)
-2. Disable automatic GC for action sequences:
+2. Disable threshold-triggered GC for action sequences:
    ```go
-   debug.SetGCPercent(-1)  // Disable automatic GC
+   debug.SetGCPercent(-1)  // Disable threshold-triggered GC
    runtime.GC()            // Manual GC during loading screens
    ```
-3. Use KOS malloc for large, long-lived data (textures, audio, levels)
+   This reduces surprise GC pauses, but it is not a hard guarantee: if an
+   allocation would overflow the active semispace, GC still runs.
+3. Use non-moving memory for large raw buffers (textures, audio, levels). In
+   the current runtime, allocations larger than 64KB bypass the semispace heap
+   and use `malloc()`. This is useful for raw buffers, but large typed Go
+   allocations that contain pointers are a known limitation; see
+   [#6](https://github.com/drpaneas/libgodc/issues/6).
 
-### Fixed 64KB Stacks
+### Fixed Spawned-Goroutine Stacks
 
-Goroutine stacks do not grow. Each goroutine gets exactly 64KB.
+Spawned goroutine stacks do not grow. By default each spawned goroutine gets
+64KB, while the main goroutine uses the KOS main-thread stack.
 
 This limits recursion depth:
 
@@ -118,10 +120,11 @@ There is no benefit from GOMAXPROCS—the Dreamcast has one CPU core.
 ### No Preemption
 
 Goroutines yield only at explicit points:
-- Channel operations
+- Blocking channel operations
 - `runtime.Gosched()`
 - `time.Sleep()`
 - Timer operations
+- Non-blocking `select`/`default` when no case is ready
 
 A goroutine in a tight loop blocks all other goroutines:
 
@@ -140,8 +143,9 @@ for {
 
 ### Channel Lock Contention
 
-Under high contention, channel locks use spin-yield loops. Many goroutines
-racing for the same channel wastes CPU.
+Under high contention, many goroutines contending for the same channel spend
+time parking and waking through the wait queues. Channel locking is still a
+serialization point, but it is not implemented as a spin-yield loop.
 
 **Workaround:** Use buffered channels to reduce contention:
 
@@ -167,22 +171,25 @@ events := make(chan Event, 16)
 
 - **reflect:** Basic type inspection only. No `reflect.MakeFunc`.
 - **unsafe:** Works, but remember pointers are 4 bytes.
-- **sync:** Mutexes work, but see M:1 scheduling caveat—no goroutine runs
-  while you hold a lock, so deadlock is impossible but starvation is easy.
+- **sync:** Mutexes work, but M:1 scheduling does not make deadlocks
+  impossible. Avoid blocking or sleeping while holding locks, and keep
+  critical sections short.
 
-### Unrecoverable Runtime Panics
+### Panic Recovery Is Limited
 
-User `panic()` is recoverable via `recover()`. Runtime panics are not:
+`panic()` enters the panic/recover machinery, and helper paths for nil
+dereference, bounds failures, and divide-by-zero currently go through
+`runtime_panicstring()` as well.
 
-- Nil pointer dereference
-- Array/slice bounds check
-- Integer divide by zero
-- Stack overflow
+To resume execution after recovery, the runtime expects a checkpoint to have
+been established earlier. A recovered panic without a checkpoint becomes fatal
+(`recover without checkpoint`).
 
-These crash immediately. There is no recovery.
+Some failures still abort immediately, including fatal `runtime_throw()` paths
+and interface type-assertion panic helpers that call `abort()` directly.
 
-**Why?** A bounds check failure means your program's invariants are violated.
-Continuing would corrupt data. It's better to crash cleanly.
+For gameplay code, the practical rule is still the same: do not rely on panic
+recovery for ordinary control flow.
 
 ## Platform Constraints
 
@@ -228,9 +235,20 @@ dcache_flush_range((uintptr_t)ptr, size);   // Flush data cache
 dcache_inval_range((uintptr_t)ptr, size);  // Invalidate data cache
 ```
 
-The GC handles cache management for semi-space flips via incremental
-invalidation, but your DMA code must handle it explicitly using KOS cache
-functions.
+The GC handles cache management for semispace flips via incremental
+invalidation, but your DMA code must handle cache coherency explicitly using
+KOS cache functions.
+
+This is only part of DMA safety. Cache management makes CPU and hardware agree
+about the bytes at a given address, but it does not stop the GC from moving a
+small heap buffer to a different address mid-transfer. DMA code therefore needs
+both:
+
+1. Correct cache flush/invalidate calls.
+2. A stable, non-moving buffer for the lifetime of the transfer.
+
+Longer-term API work to make DMA-safe memory explicit is tracked in
+[#11](https://github.com/drpaneas/libgodc/issues/11).
 
 ### No Signals
 
@@ -283,12 +301,12 @@ architectures.
 
 | Limitation              | Impact                    | Workaround                    |
 |-------------------------|---------------------------|-------------------------------|
-| G struct pooling        | ~160B per dead goroutine  | Long-lived goroutines         |
+| Exited goroutine cleanup | High spawn/exit churn retains stack/TLS state | Long-lived goroutines |
 | GC pauses               | 1-20ms depending on heap  | Small heap, manual GC timing  |
 | M:1 scheduling          | No parallelism            | Explicit yields               |
 | Fixed stacks            | Limited recursion         | Iteration, smaller frames     |
 | No preemption           | Tight loops block all     | `runtime.Gosched()`           |
-| Runtime panics          | Unrecoverable             | Defensive coding              |
+| Panic recovery          | Checkpoint-based and limited | Avoid panic-driven control flow |
 | 16MB RAM                | Memory pressure           | Monitor usage, plan carefully |
 
 For typical Dreamcast games—15-60 minute sessions with a fixed goroutine

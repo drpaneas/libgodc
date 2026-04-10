@@ -31,7 +31,7 @@ Create and run a project:
 ```sh
 mkdir myproject && cd myproject
 godc init
-# write you main.go and other *.go files
+# write your main.go and other *.go files
 godc build
 godc run
 ```
@@ -51,17 +51,20 @@ See the [Quick Start Guide](https://drpaneas.github.io/libgodc/getting-started/q
 
 ## Performance
 
-Measured on real hardware (SH-4 @ 200MHz):
+The repo includes `tests/bench_architecture.go` for measuring runtime behavior
+on Dreamcast hardware.
 
-| Operation           | Time     |
-|---------------------|----------|
-| Gosched yield       | ~120 ns  |
-| Allocation          | ~186 ns  |
-| Buffered channel    | ~1.8 μs  |
-| Context switch      | ~6.4 μs  |
-| Unbuffered channel  | ~13 μs   |
-| Goroutine spawn     | ~31 μs   |
-| GC pause            | 72 μs - 6 ms |
+| Benchmark | What it reports |
+|-----------|-----------------|
+| `gosched` | Nanoseconds per yield |
+| Buffered channel | Nanoseconds per buffered operation |
+| Context switch | Nanoseconds per goroutine switch |
+| Unbuffered channel | Nanoseconds per roundtrip |
+| Goroutine spawn | Nanoseconds per spawn/run cycle |
+| GC pause | Microseconds per forced collection across retained sizes from 32 KB to 1 MB |
+| Memory layout | Stack size, context size, header size, and large-object threshold |
+
+Run `tests/bench_architecture.elf` on your hardware for current numbers.
 
 ## Examples
 
@@ -78,6 +81,7 @@ The `examples/` directory contains working programs:
 - `filesystem` — Directory browser
 - `vmu` — VMU LCD and buzzer
 - `brkout` — Breakout clone (GPL v2, port of Jim Ursetto's original)
+- `platformer` — Side-scrolling platformer
 - `pong` — Pong clone with 1P/2P mode, particle effects, and AI
 
 ## License

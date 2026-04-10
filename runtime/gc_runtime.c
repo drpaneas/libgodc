@@ -153,9 +153,9 @@ void runtime_unsafeslice64(struct __go_type_descriptor *t, void *ptr, int64_t le
 }
 
 /* GC trigger threshold as percentage of heap size.
- * 100 = collect when heap is full (default)
- * 50 = collect when heap is 50% full (more frequent, shorter pauses)
- * -1 = disable automatic GC (only explicit runtime.GC() triggers collection)
+ * 100 = collect at 75% of semispace (default)
+ * 50 = collect at 50% of semispace (more frequent, shorter pauses)
+ * -1 = disable threshold-triggered GC (overflow still forces collection)
  */
 #ifdef GODC_DEFAULT_GC_PERCENT
 int32_t gc_percent = GODC_DEFAULT_GC_PERCENT;

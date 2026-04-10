@@ -24,7 +24,7 @@ libgodc replaces the Go runtime with one designed for this environment.
 │     memory allocation, goroutines, channels, GC                │
 ├────────────────────────────────────────────────────────────────┤
 │  KallistiOS (KOS)                                              │
-│     baremetal OS for Dreamcast                                 │
+│     bare-metal OS for Dreamcast                                │
 │     provides malloc, threads, drivers                          │
 ├────────────────────────────────────────────────────────────────┤
 │  Dreamcast Hardware                                            │
@@ -34,7 +34,7 @@ libgodc replaces the Go runtime with one designed for this environment.
 ```
 
 We don't need the full Go runtime. We need enough to run games. Games have
-different requirements than servers, cloud providers and kubernetes.
+different requirements than servers, cloud services, or desktop systems.
 This simplifies everything.
 
 ## Memory Model
@@ -217,7 +217,7 @@ In standard Go, goroutines start with a small stack (a few KB) that grows
 automatically when needed - the runtime detects when a function call would
 overflow the current stack, allocates a larger one, copies everything over,
 and updates all pointers. Earlier Go versions used "segmented stacks"
-(splitstack), where additional stack segments were chained together on demand
+(`split-stack`), where additional stack segments were chained together on demand
 instead of copying. Both approaches let goroutines use only as much stack as
 they actually need.
 
@@ -263,18 +263,18 @@ stack size. Compile-time detection of oversized stack frames is tracked in
 
 ### Object Header
 
-Τhe GC has hammer, and everything in the memory looks like a nail. Sees no 
-type system, but just raw memory. For each object it encounters, it must answer
-two questions: 
+The GC sees raw memory, not a high-level Go object graph. For each GC-managed
+semispace object it encounters, it must answer two questions:
 
 1. "how many bytes do I copy to the other semispace?" and 
 2. "does this object contain pointers I need to follow?"
 
 Without answers, the GC cannot tell where one object ends and the next begins.
 
-Solution? Every object solves this by carrying an 8-byte header
-right before its data. The GC reaches it with `ptr - 8` - a single subtract,
-no lookups, no hash tables. The cost is 8 extra bytes per object.
+Solution? Each GC-managed semispace object carries an 8-byte header right
+before its data. The GC reaches it with `ptr - 8` - a single subtract, no
+lookups, no hash tables. The cost is 8 extra bytes per semispace object.
+External `malloc()`-backed allocations do not use this header.
 
 ```
               8-byte header                    your data
@@ -287,7 +287,7 @@ no lookups, no hash tables. The cost is 8 extra bytes per object.
           GC info    type pointer          what your Go code sees
 ```
 
-The header has two 4-byte words:
+For GC-managed semispace objects, the header has two 4-byte words:
 
 **Word 1 - GC info (packed into 32 bits):**
 - **Forwarded** (1 bit): Has this object already been copied to the other
@@ -296,8 +296,9 @@ The header has two 4-byte words:
 - **NoScan** (1 bit): Does this object contain any pointers? If not, the GC
   can skip scanning its contents - it just copies the bytes without looking
   inside. This is the key performance flag.
-- **Type tag** (6 bits): What Go type kind this is (int, string, struct,
-  slice, etc.). Used for type-safe operations.
+- **Type tag** (6 bits): Compact Go kind metadata copied into the header. The
+  collector primarily relies on the full type descriptor pointer, not this
+  small tag, when it needs object layout information.
 - **Size** (24 bits): The total object size in bytes, including the 8-byte
   header and any alignment padding. The GC needs this to know how many bytes
   to copy. 24 bits allows sizes up to 16MB, which covers the entire Dreamcast
@@ -345,8 +346,11 @@ The GC-managed heap is divided into two equally sized regions called
 semispaces. Think of them as "space A" and "space B". Small and medium
 allocations happen in one of them (the active space) using the bump allocator.
 The other semispace is reserved as the destination for the next collection.
-Objects larger than `GC_LARGE_OBJECT_THRESHOLD` (64KB by default) bypass this
-moving heap and go through `malloc()` instead.
+Objects larger than `GC_LARGE_OBJECT_THRESHOLD` (64KB by default) currently
+bypass this moving heap and go through `malloc()` instead. That is convenient
+for large raw buffers, but it is also a current runtime limitation for large
+typed Go allocations that contain pointers; see
+[#6](https://github.com/drpaneas/libgodc/issues/6).
 
 GC does not wait until the active semispace is literally full. By default it
 can trigger once usage crosses the configured threshold (75% when
@@ -481,10 +485,23 @@ Build and run `tests/test_gc_percent.elf` to verify this works.
 
 ### Pause Times
 
-GC pause time depends on live object count and layout. Run
-`tests/bench_architecture.elf` on hardware to measure actual pauses.
+GC pause time is the time spent inside a collection cycle while Go code is
+waiting for the collector to finish. In libgodc, this is the elapsed time
+inside `gc_collect()`: roots are scanned, reachable objects are copied, and
+Cheney's scan completes before execution continues. More live data usually
+means a longer pause because there is more memory to copy and scan.
 
-For 60fps (16.6ms frames), disable automatic GC during gameplay:
+Pause time matters because it directly consumes your frame budget. At 60fps,
+one frame is only 16.6ms. A 2ms GC pause is noticeable but often acceptable; a
+10ms pause consumes most of the frame; a pause longer than 16.6ms can cause a
+missed frame or visible hitch.
+
+Run `tests/bench_gc_pause.elf` on hardware for focused pause measurements, or
+`tests/bench_architecture.elf` for a broader benchmark that also reports GC
+pauses.
+
+For 60fps gameplay, disable threshold-triggered GC during hot gameplay
+sections:
 
 ```go
 import _ "unsafe"
@@ -508,7 +525,9 @@ func main() {
 ```
 
 Even with `gc_percent = -1`, an allocation that would overflow the active
-semispace still forces a collection.
+semispace still forces a collection. So this reduces surprise GC pauses, but
+it is not a hard guarantee of "no GC during gameplay" if you keep allocating or
+your live data no longer fits in one semispace.
 
 ### Root Scanning
 
@@ -526,68 +545,159 @@ static void gc_scan_roots(void)
     // Scan current stack
     gc_scan_stack();
 
-    // Scan all goroutine stacks
+    // Scan all goroutine stacks (and their G structs)
     gc_scan_all_goroutine_stacks();
 }
 ```
 
-1. **Global variables**  Registered by gccgo-generated code via
-   `registerGCRoots()`. Each package contributes a root list.
+1. **Explicit roots**  Optional. If C code holds pointers to Go objects across
+   a collection, it must register the pointer location with `gc_add_root(&ptr)`.
+   During GC, the collector updates that location if the object moves.
 
-2. **Goroutine stacks**  Scanned conservatively. Every aligned pointer-sized
-   value that points into the heap is treated as a potential pointer.
+2. **Compiler-registered roots**  These are not "all globals" scanned blindly.
+   gccgo registers root lists with `registerGCRoots()`, and the collector scans
+   those roots using compiler-provided pointer metadata when available.
 
-3. **Goroutine metadata (`G` structs)**  Scanned conservatively for pointers
-   such as `_panic`, `_defer`, `waiting`, and `checkpoint`.
+3. **Current stack**  The stack of the goroutine that triggered GC is scanned
+   conservatively from the current stack pointer upward.
 
-4. **Explicit roots**  Optional. If you write C code that holds pointers to
-   Go objects, call `gc_add_root(&ptr)` so the GC doesn't collect them.
+4. **Other goroutine stacks**  Each live goroutine's saved stack is scanned
+   conservatively using the saved stack pointer, so only the used portion of
+   the stack is examined.
+
+5. **Goroutine metadata (`G` structs)**  Each live goroutine's `G` struct is
+   also scanned conservatively for runtime-held pointers such as `_panic`,
+   `_defer`, `waiting`, and `checkpoint`.
+
+`Conservative` here does not mean "every aligned word is automatically treated
+as a pointer." The scanner first filters for values that look like valid heap
+object pointers and only then treats them as references. There is no separate
+explicit register scan; stack scanning catches spilled registers.
 
 ### DMA Hazard
 
-The GC moves objects. Any pointer held by hardware (PVR DMA, AICA) will become
-stale after collection. Safe patterns:
+DMA (Direct Memory Access) is a hardware feature. The CPU sets up the transfer
+by telling a hardware block such as the graphics processor (PowerVR2) or sound
+processor (AICA): use this source address, this destination address, and this
+size, then start. After that, the hardware moves the bytes on its own while
+the CPU goes on doing other work instead of copying the data byte by byte.
+
+The hazard is timing. Once DMA starts, the hardware keeps using the raw memory
+address the CPU programmed into it. But libgodc's GC moves small heap objects.
+If the buffer lives in the GC heap and a collection happens before DMA
+completes, the GC may move that buffer to a new address. Go code can be
+updated to the new address, but the hardware is not aware of the move and keeps
+reading from or writing to the old, now stale, address.
+
+There are only a few ways to avoid this:
+
+1. Use memory that the moving GC will never relocate. In libgodc, large
+   allocations (`size > 64KB`) bypass the semispace GC and use `malloc()`
+   instead. Textures and framebuffers can also live in VRAM via
+   `kos.PvrMemMalloc()`.
+2. Make sure no collection can happen while the DMA transfer is in flight. In
+   practice that means: do not call `runtime.GC()`, avoid allocations that
+   could fill the active semispace, and if needed disable threshold-triggered
+   GC around that section with `debug.SetGCPercent(-1)`. This reduces the risk,
+   but it is not a perfect guarantee: if you overflow the active semispace, GC
+   still runs.
+3. Handle cache coherency separately. A stable address is necessary, but not
+   sufficient. Even if the buffer does not move, DMA code still needs cache
+   flush/invalidate calls so hardware and CPU see the same bytes.
+
+Longer-term API work to make these memory domains explicit and steer callers
+toward DMA-safe buffers is tracked in
+[#11](https://github.com/drpaneas/libgodc/issues/11).
+
+Movement-safe patterns:
 
 ```go
-// DANGEROUS  GC might move buffer during DMA:
-data := make([]byte, 4096)     // Small, in GC heap
-startDMA(data)                  // Hardware holds pointer
-runtime.Gosched()               // GC might run here!
+// DANGEROUS: small buffer in moving GC heap
+data := make([]byte, 4096)      // Small, in GC heap
+startDMA(data)                  // Hardware keeps this address until DMA completes
+runtime.Gosched()               // Another goroutine may run
+// Any later allocation or explicit runtime.GC() before DMA completes can move `data`
 
-// SAFE  Large allocations bypass GC:
+// SAFE: large allocations bypass the moving GC heap
 data := make([]byte, 100*1024)  // >64KB, uses malloc
-startDMA(data)                  // Won't move
+startDMA(data)                  // Address will not move during GC
 
-// SAFE  VRAM for textures:
+// SAFE: VRAM for textures
 tex := kos.PvrMemMalloc(size)   // Allocates in VRAM
 ```
 
+These patterns only avoid movement by the GC. DMA code still needs explicit
+cache flush/invalidate calls; see Cache Coherency below.
+
 ## Scheduler
+
+The scheduler is the part of the runtime that decides which goroutine runs
+next. In libgodc, it keeps a queue of goroutines that are ready to run. When
+the current goroutine cannot continue yet, such as waiting on a channel or
+timer, or when it voluntarily lets another goroutine run, the scheduler saves
+its state and restores another goroutine's state so execution can continue
+there.
 
 ### M:1 Cooperative Model
 
-All goroutines run on a single KOS thread. One goroutine executes at a time.
-Context switches happen only at explicit yield points:
+All goroutines run on top of a single underlying KallistiOS (KOS) OS thread.
+Only one goroutine executes at a time. The scheduler gets a chance to run only
+when the current goroutine
+voluntarily gives up control or blocks waiting for something:
 
-- Channel operations (send, receive, select)
-- `runtime.Gosched()`
-- `time.Sleep()` and timer waits
+- Channel operations that need to wait, such as send, receive, or `select`
+- `runtime.Gosched()`, which means "let another goroutine run now"
+- `time.Sleep()` or timer waits, which park the goroutine until a timer expires
 
-A goroutine in a tight CPU loop will monopolize the processor. There is no
-preemption.
+A goroutine in a tight CPU loop will monopolize the processor. The runtime
+cannot forcibly interrupt it and switch to another goroutine.
 
 ### Why M:1?
 
-The Dreamcast has one CPU core. Preemptive scheduling adds complexity and
-overhead for no parallelism benefit. Cooperative scheduling is simpler,
-faster, and sufficient for games.
+`M:1` means many goroutines (`M`) are multiplexed onto one underlying OS thread
+(`1`). On Dreamcast, that OS thread runs on the console's single CPU core, so
+only one goroutine can execute at a time.
+
+`Preemptive scheduling` means the runtime or OS can interrupt a running
+goroutine at arbitrary points, usually on a timer, and switch to another one.
+That improves fairness, but it also needs more machinery: timer-driven
+interrupts, more bookkeeping, and more forced context switches.
+
+`Cooperative scheduling` means the current goroutine keeps running until it
+blocks or explicitly yields. That is simpler because switches happen only at
+known points, and it is usually faster on this target because the runtime
+avoids timer-driven forced switches and their bookkeeping cost.
+
+Since the Dreamcast has one CPU core, this extra preemptive machinery would not
+let Go goroutines run in parallel. The tradeoff is fairness: a goroutine that
+never yields can starve others. For libgodc's game-oriented workloads, the
+simpler M:1 cooperative design is a good fit.
+
+Possible future work in this area is tracked in
+[#12](https://github.com/drpaneas/libgodc/issues/12), which explores enforced
+safepoints and better scheduler fairness without abandoning the single-threaded
+design. The related question of making the single KallistiOS-thread contract
+explicit is tracked in [#9](https://github.com/drpaneas/libgodc/issues/9).
 
 ### Run Queue Structure
 
-The scheduler maintains a simple FIFO run queue. Goroutines are added to
-the tail and removed from the head. This is simpler than prioritybased
-scheduling and sufficient for game workloads where you control when each
-goroutine yields.
+The run queue is the scheduler's waiting room for goroutines that are ready to
+run right now. Some goroutines are blocked waiting on a channel or timer; those
+cannot run yet. Others are ready to run as soon as the CPU becomes available.
+The scheduler needs a place to remember that second group, and the run queue is
+that place.
+
+Nothing maintains this queue in parallel or in the background. The scheduler
+updates it directly in the same single-threaded runtime code:
+
+- when a goroutine becomes runnable again, it is appended to the queue
+- when the current goroutine yields, it is appended to the queue
+- when the scheduler wants the next goroutine, it removes one from the front
+
+libgodc uses a simple FIFO queue: goroutines are added to the tail and removed
+from the head. This is easy to implement, predictable, and sufficient for
+game-oriented workloads where the program mostly controls fairness by deciding
+when goroutines yield.
 
 ```c
 // Goroutines execute in the order they become runnable
@@ -595,23 +705,46 @@ runq_put(gp);   // Add to tail
 gp = runq_get(); // Remove from head
 ```
 
-For realtime requirements, structure your code so timesensitive work
-runs on the main goroutine or yields frequently.
+For real-time requirements, structure your code so time-sensitive work runs on
+the main goroutine or yields frequently.
+
+One subtlety: it is first ready, first run, not first created, first run forever.
+A goroutine can run, block, wake up later, and then re-enter the queue at a later time.
 
 ### Context Switching
 
-Each goroutine saves 64 bytes of CPU state when it yields:
+Context switching is the low-level mechanism the scheduler uses to pause one
+goroutine and resume another. A `context` is the CPU state needed to continue
+execution later as if nothing happened: register values, stack pointer, return
+address/program counter, and floating-point state.
+
+This solves a basic problem: the Dreamcast has one CPU core, but libgodc wants
+many goroutines to take turns running on it. When goroutine A yields, the
+runtime must remember exactly where A stopped so it can later resume A and run
+goroutine B in the meantime. Without context switching, the runtime would lose
+the CPU state for the paused goroutine.
+
+In libgodc, each goroutine saves 64 bytes of CPU state when it yields:
 
 ```c
 typedef struct sh4_context {
-    uint32_t r8, r9, r10, r11, r12, r13, r14;  // Calleesaved
+    uint32_t r8, r9, r10, r11, r12, r13, r14;  // Callee-saved
     uint32_t sp, pr, pc;                        // Special registers
-    uint32_t fr12, fr13, fr14, fr15;           // FPU calleesaved
+    uint32_t fr12, fr13, fr14, fr15;           // FPU callee-saved
     uint32_t fpscr, fpul;                       // FPU control
 } sh4_context_t;
 ```
 
-Context switch is implemented in `runtime_sh4_minimal.S` (simplified for brevity):
+The actual save/restore operation is implemented in
+`runtime_sh4_minimal.S` (simplified for brevity).
+
+This code is written in assembly rather than C or Go because it must directly
+manipulate CPU registers and stack state with exact control. A normal C or Go
+function would already be using registers, following the calling convention,
+and touching the stack while it runs, which could overwrite the very machine
+state the runtime is trying to preserve. The SH-4 return register (`pr`) and
+stack pointer (`sp`) also need precise save/restore handling that is awkward or
+impossible to express safely in ordinary Go or C.
 
 ```asm
 __go_swapcontext:
@@ -626,9 +759,23 @@ __go_swapcontext:
     rts
 ```
 
+This snippet shows the core idea:
+
+- `r4` points to the context structure where the current goroutine's CPU state
+  should be saved
+- `r5` points to the context structure for the goroutine we want to resume
+- the first group of instructions copies the current register values into
+  `old_ctx`
+- the second group loads previously saved register values from `new_ctx`
+- `rts` returns into the restored execution state, so the resumed goroutine
+  continues as if it had never stopped
+
+The omitted lines do the same for the stack pointer, return/program location,
+and floating-point state.
+
 ### FPU Context
 
-Every context switch saves floatingpoint registers, even if your goroutine
+Every context switch saves floating-point registers, even if your goroutine
 only uses integers. Compared with the no-FPU path, this adds about 25 extra
 cycles inside each low-level `__go_swapcontext` call.
 
@@ -647,102 +794,151 @@ that unexpectedly uses a float won't corrupt another's FPU state.
 usage in `G` or pass `fpu_flags` from the scheduler, so the conservative
 always-save path is the one that is actually used.
 
+Possible future work to use the lazy/no-FPU paths safely is tracked in
+[#13](https://github.com/drpaneas/libgodc/issues/13).
+
 ## Goroutine Structure
+
+A goroutine is not just a function call. The runtime needs a record that keeps
+track of everything required to pause it, resume it, and manage its state over
+time. In libgodc, that record is the `G` struct.
+
+The important takeaway is not every field, but the categories of information
+the runtime keeps for each goroutine:
+
+- panic/defer state, with ABI-critical fields expected by gccgo
+- scheduling state, such as whether the goroutine is runnable or waiting
+- stack bounds and TLS
+- saved CPU context, so the goroutine can be resumed later
+- wait-state metadata for channels, timers, and cleanup
+
+Here is a reduced view of the structure:
 
 ```c
 typedef struct G {
-    // ABICRITICAL: gccgo expects these at specific offsets
+    // ABI-critical: gccgo expects these at fixed offsets
     PanicRecord *_panic;      // Offset 0: innermost panic
     GccgoDefer *_defer;       // Offset 4: innermost defer
 
     // Scheduling
     Gstatus atomicstatus;
-    G *schedlink;
-    void *param;
 
     // Stack
     void *stack_lo;
     void *stack_hi;
-    stack_segment_t *stack;
-    void *stack_guard;
-    tls_block_t *tls;
 
-    // CPU context (64 bytes)
+    // Saved CPU state for context switching
     sh4_context_t context;
 
     // Metadata
     int64_t goid;
     WaitReason waitreason;
-    int32_t allgs_index;
-    uint32_t death_generation;
-    G *dead_link;
-    uint8_t gflags2;
 
-    // Channel wait
+    // Waiting / panic bookkeeping
     sudog *waiting;
-
-    // Defer/panic
     Checkpoint *checkpoint;
-    int defer_depth;
-
-    // Entry point
-    uintptr_t startpc;
-    G *freeLink;
 } G;
 ```
 
-See `goroutine.h` for the authoritative definition.
+`goroutine.h` contains the authoritative full definition. The reason this
+structure matters is simple: without it, the runtime would have nowhere to
+store the goroutine's saved CPU state, stack information, wait status, and
+panic/defer bookkeeping between scheduler decisions.
 
 ### Goroutine Lifecycle
 
-1. **Creation**  `__go_go()` allocates G struct, stack, and TLS block
-2. **Runnable**  Added to run queue
-3. **Running**  Scheduler switches context to it
-4. **Waiting**  Parked on channel, `select`, or timer waits
-5. **Dead**  Function returned, queued for cleanup
+A goroutine moves through a small runtime state machine:
+
+1. **Created**  `__go_go()` allocates the `G` struct, a stack, and a TLS block.
+2. **Ready to run**  The goroutine is placed on the run queue, meaning it could
+   run as soon as the scheduler picks it.
+3. **Running**  The scheduler context-switches into that goroutine, so it now
+   owns the CPU.
+4. **Waiting**  If it cannot continue yet, such as waiting on a channel,
+   `select`, or timer, the runtime parks it and runs something else.
+5. **Finished**  When the goroutine function returns, the runtime marks it dead
+   and queues it for cleanup.
 
 `proc.c` includes a grace-period dead queue using `death_generation` and
 `dead_link`, but in the current source `global_generation` is never advanced.
-So the reclamation path exists, but exited goroutines do not currently age into
-reclaimable state.
+So the cleanup path exists, but exited goroutines do not currently become
+eligible for actual cleanup and reuse.
 
 ## Channels
 
 Channels are the primary synchronization primitive. Implementation follows
 the Go runtime closely.
 
+They matter to libgodc's design because channel operations are one of the main
+ways goroutines block, wake up, and hand work to each other. So channels are
+not just a language feature here; they are tightly connected to the scheduler,
+wait queues, and overall runtime behavior.
+
 ### Structure
+
+A channel is represented at runtime by an `hchan` structure. The runtime needs
+this structure to solve three problems:
+
+- store buffered elements for buffered channels
+- remember which goroutines are waiting to send or receive
+- track channel state, such as element size and whether the channel is closed
+
+Here is a reduced view of the structure:
 
 ```c
 typedef struct hchan {
-    uint32_t qcount;        // Current element count
-    uint32_t dataqsiz;      // Buffer size (0 = unbuffered)
-    void *buf;              // Circular buffer
-    uint16_t elemsize;      // Element size
-    uint8_t closed;         // Channel closed flag
-    uint8_t buf_mask_valid; // Optimization: can use & instead of %
-    struct __go_type_descriptor *elemtype;
-    uint32_t sendx, recvx;  // Buffer indices
-    waitq recvq, sendq;     // Wait queues (sudog linked lists)
-    uint8_t locked;         // Simple lock flag
+    uint32_t qcount;       // How many elements are buffered right now
+    uint32_t dataqsiz;     // Buffer capacity (0 means unbuffered)
+    void *buf;             // Circular buffer storage
+    uint16_t elemsize;     // Size of each element
+    uint8_t closed;        // Whether close(ch) has happened
+    uint32_t sendx, recvx; // Circular-buffer indices
+    waitq recvq, sendq;    // Goroutines waiting to receive or send
+    uint8_t locked;        // Internal lock for channel operations
 } hchan;
 ```
 
+The important fields fall into three groups:
+
+- `qcount`, `dataqsiz`, `buf`, `sendx`, and `recvx` describe the buffered data
+- `recvq` and `sendq` remember blocked receivers and senders
+- `elemsize` and `closed` describe the channel's element layout and state
+
+`chan.h` contains the authoritative full definition, including extra metadata
+such as `elemtype` and internal optimizations.
+
 ### Unbuffered Channels
 
-Send blocks until a receiver arrives. Receive blocks until a sender arrives.
-When both are ready, data transfers directlyno buffering.
+An unbuffered channel has no storage for queued elements. A send cannot finish
+until a receiver is ready, and a receive cannot finish until a sender is ready.
+When both are ready, the value transfers directly from sender to receiver with
+no intermediate buffer.
 
-This is the fundamental synchronization primitive: rendezvous.
+This makes an unbuffered channel more than a transport mechanism: it is also a
+synchronization point. The sender and receiver rendezvous at the channel
+operation, so neither side continues past that point until the other side is
+ready.
 
 ### Buffered Channels
 
-Send blocks only when buffer is full. Receive blocks only when buffer is
-empty. The buffer is a simple circular array.
+A buffered channel adds storage between sender and receiver. The sender can
+place values into the channel without waiting, as long as there is still room
+in the buffer. The receiver can remove values without waiting, as long as the
+buffer is not empty.
+
+So a buffered channel trades strict rendezvous for decoupling: sender and
+receiver do not have to meet at exactly the same moment. The runtime implements
+the buffer as a simple circular array.
 
 ### Select
 
-Select uses randomized ordering to prevent starvation:
+`select` lets one goroutine wait on several channel operations at once and
+continue with whichever one becomes possible first. Instead of committing to a
+single send or receive, the goroutine asks the runtime to choose among multiple
+cases.
+
+When more than one case is ready, the runtime randomizes the polling order so
+the same case does not always win first:
 
 ```go
 select {
@@ -752,110 +948,168 @@ case <time.After(timeout):
 }
 ```
 
-Implementation: shuffle cases, check each for readiness, park on all
-if none ready.
+Implementation summary: shuffle the case order, check for any ready case, and
+if none are ready, park the goroutine on all relevant wait queues until one
+case wakes it up.
 
 
 ## Defer, Panic, Recover
 
+These features matter to libgodc's design because they require per-goroutine
+runtime state and controlled stack unwinding. Deferred calls live on each
+goroutine, panic state lives on each goroutine, and recovery depends on
+checkpoint machinery that can jump execution back to a known safe point.
+
 ### Defer
 
-Defer uses a linked list per goroutine. Each `defer` statement pushes a
-record; function exit pops and executes them in LIFO order.
+Each goroutine keeps a linked list of deferred calls. Every `defer` statement
+pushes a record onto that list. When the function returns normally, or when the
+runtime unwinds the stack during panic, those records are popped and executed
+in LIFO order.
+
+The runtime needs each defer record to remember at least:
+
+- which deferred call comes next in the chain
+- which function to invoke
+- what argument to pass
+- whether the defer is currently being executed as part of panic unwinding
+
+Here is a reduced view of the structure:
 
 ```c
 typedef struct GccgoDefer {
-    struct GccgoDefer *link;    // Next entry in defer stack
-    bool *frame;                // Pointer to caller's frame bool
-    PanicRecord *panicStack;    // Panic stack when deferred
-    PanicRecord *_panic;        // Panic that caused defer to run
-    uintptr_t pfn;              // Function pointer to call
-    void *arg;                  // Argument to pass to function
-    uintptr_t retaddr;          // Return address for recover matching
-    bool makefunccanrecover;    // MakeFunc recover permission
-    bool heap;                  // Whether heap allocated
-} GccgoDefer;  // 32 bytes total
+    struct GccgoDefer *link; // Next deferred call in the goroutine's chain
+    PanicRecord *_panic;     // Panic currently being unwound, if any
+    uintptr_t pfn;           // Function pointer to call
+    void *arg;               // Argument to pass
+    uintptr_t retaddr;       // Return address used for recover matching
+} GccgoDefer;
 ```
+
+`panic_dreamcast.h` contains the authoritative full definition, including the
+ABI-sensitive fields gccgo expects.
 
 ### Panic and Recover
 
-User-initiated panic (`panic()`) is recoverable via `recover()` in a deferred
-function. Implementation uses `setjmp`/`longjmp` with checkpoints.
+A panic is the runtime's stack-unwinding path. When `panic()` starts, libgodc
+records panic state on the current goroutine and walks that goroutine's defer
+chain. Deferred calls run one by one, and one of them may call `recover()`.
+
+To resume execution after a successful `recover()`, the runtime jumps back to a
+previous checkpoint using `setjmp`/`longjmp`. This is why panic recovery is
+more constrained here than the simple Go-level story suggests: a recovered
+panic without a checkpoint becomes fatal.
 
 Current implementation detail: helper functions for nil dereference, bounds
 checks, and divide-by-zero also call `runtime_panicstring()`, so they enter the
 same panic/recover machinery instead of going straight to `runtime_throw()`.
+
 Fatal runtime failures still use `runtime_throw()` and abort immediately.
 
 ## Type System
 
 ### Type Descriptors
 
-gccgo generates type descriptors for every Go type. libgodc uses these for:
+Type descriptors are the bridge between Go's compile-time type system and the
+runtime's behavior. gccgo generates a descriptor for every Go type, and libgodc
+uses that metadata for:
 
- GC pointer scanning (which fields contain pointers?)
- Interface method dispatch (which methods does this type implement?)
- Reflection (what is this type's name and structure?)
+- precise GC pointer scanning (which parts of an object may contain pointers?)
+- interface method dispatch (which methods does this type implement?)
+- limited reflection and type-name metadata
+
+Here is a reduced view of the base descriptor:
 
 ```c
 typedef struct __go_type_descriptor {
-    uintptr_t __size;                               // Size in bytes
-    uintptr_t __ptrdata;                            // Prefix containing pointers
-    uint32_t __hash;                                // Type hash
-    uint8_t __tflag;                                // Extra type flags
-    uint8_t __align;                                // Variable alignment
-    uint8_t __field_align;                          // Struct-field alignment
-    uint8_t __code;                                 // Kind (bool, int, slice, etc.)
-    void *__equalfn;                                // Equality helper
-    const uint8_t *__gcdata;                        // GC bitmap/program
-    const struct __go_string *__reflection;         // Reflection string form
-    const struct __go_uncommon_type *__uncommon;    // Method metadata
-    struct __go_type_descriptor *__pointer_to_this; // Descriptor for *T
+    uintptr_t __size;                            // Size of values of this type
+    uintptr_t __ptrdata;                         // Prefix of the value that may contain pointers
+    uint8_t __code;                              // Kind (bool, int, slice, struct, etc.)
+    const uint8_t *__gcdata;                     // GC bitmap or GC program
+    const struct __go_string *__reflection;      // String form used by limited reflection/reporting
+    const struct __go_uncommon_type *__uncommon; // Method metadata for named/method-bearing types
 } __go_type_descriptor;
 ```
 
-On the current 32-bit SH-4 build this base descriptor is 36 bytes. See
-`runtime/type_descriptors.h` for the authoritative layout and offset checks.
+The full structure also contains equality, alignment, hashing, and pointer-type
+metadata. On the current 32-bit SH-4 build this base descriptor is 36 bytes.
+See `runtime/type_descriptors.h` for the authoritative layout and offset
+checks.
 
 ### Interface Tables
 
-Interface dispatch uses runtime-built method tables with the layout gccgo
-expects. When you write:
+Interface method calls need another runtime structure: an interface table
+(`itab`). When you write:
 
 ```go
 var w io.Writer = os.Stdout
 w.Write(data)
 ```
 
-libgodc builds the itab on demand in `get_itab()`, fills the method slots at
-runtime, and caches the result for reuse.
+the runtime must answer two questions before `w.Write(data)` can run:
+
+- what concrete type is actually stored inside the interface?
+- which concrete function implements the interface method slot being called?
+
+libgodc answers that by building an `itab` on demand in `get_itab()`. The
+layout follows what gccgo expects:
+
+- `Iface.itab` points at the `methods[0]` entry of the table
+- `methods[0]` stores the concrete type descriptor
+- `methods[1+]` store function pointers for the interface methods
+
+Once built, the table is cached and reused for later interface calls with the
+same interface type and concrete type pair.
 
 ## SH4 Specifics
 
-### Register Allocation
+These hardware and ABI constraints shape how libgodc is implemented.
 
- **r0r7**: Callersaved (arguments, scratch)
- **r8r14**: Calleesaved (preserved across calls)
- **r15**: Stack pointer
- **pr**: Procedure return (return address)
- **GBR**: Reserved for KOS `_Thread_local`
+### Calling Convention Basics
 
-We do not use GBR for goroutine TLS. Instead, we use a global `current_g`
-pointer. This avoids conflicts with KOS and simplifies context switching.
+When one function calls another, the SH-4 ABI defines which registers may be
+overwritten and which must be preserved. This matters directly to libgodc's
+assembly stubs and context-switching code, because the runtime must save and
+restore the right machine state.
+
+- `r0-r3`: argument, result, and scratch registers
+- `r4-r7`: additional argument registers
+- `r8-r13`: callee-saved general-purpose registers
+- `r14`: frame pointer
+- `r15`: stack pointer
+- `pr`: procedure return register (return address)
+- `GBR`: global base register, reserved by KOS for `_Thread_local`
+
+The terms `caller-saved` and `callee-saved` simply describe who is responsible
+for preserving a register across a function call. Caller-saved registers may be
+overwritten by the callee, so the caller must save them first if it still needs
+their values. Callee-saved registers must be restored by the callee before it
+returns.
+
+libgodc does not use `GBR` for goroutine TLS. Instead, it uses global
+`current_g` / `current_tls` pointers. This avoids conflicts with KOS and keeps
+context switching simpler.
 
 ### FPU Mode
 
-libgodc is built with GCC's `-m4-single` mode. The SH4 FPU is fast in
-single-precision but slow in double-precision. All `float64` operations
-generate software-emulation calls; avoid them in hot paths.
+The SH-4 has a hardware floating-point unit (FPU), but libgodc is built with
+GCC's `-m4-single` mode. That makes single-precision (`float32`) arithmetic the
+fast path. Double-precision (`float64`) operations are much slower because they
+fall back to software-emulation helpers instead of running efficiently in
+hardware.
 
-### Cache Considerations
+This matters both for application code and for the runtime. In hot numeric
+paths, prefer `float32`. In the scheduler, FPU state also affects context-switch
+cost, because floating-point registers must be preserved when goroutines switch.
 
-The SH4 has 32byte cache lines. Context switching saves/restores 64 bytes
-of CPU state (2 cache lines).
+### Cache Coherency
 
-DMA operations require explicit cache management. The GC handles this for
-its semispace flip, but user code doing DMA must use KOS cache functions:
+The SH-4 has 32-byte cache lines. A saved goroutine context is 64 bytes, so a
+context switch touches two cache lines of CPU state.
+
+More importantly, DMA-capable hardware does not automatically see dirty CPU
+cache lines. The GC handles cache management for its own semispace flip, but
+user code doing DMA must use KOS cache functions explicitly:
 
 ```c
 #include <arch/cache.h>
@@ -864,74 +1118,27 @@ dcache_flush_range((uintptr_t)ptr, size);  // Flush before DMA write
 dcache_inval_range((uintptr_t)ptr, size);  // Invalidate after DMA read
 ```
 
-## File Organization
-
-Selected files in `runtime/` (not exhaustive):
-
-```
-runtime/
-├── go-main.c              # Executable entry point
-├── kos_startup.c          # KOS startup integration
-├── dreamcast_support.c    # Platform support glue
-├── runtime.h              # Shared runtime declarations
-├── runtime_stubs.c        # GCC/gccgo runtime entry points and helpers
-├── runtime_c_stubs.c      # C wrappers for runtime symbols
-├── gc_heap.c              # Heap initialization, allocation
-├── gc_copy.c              # Cheney's copying collector
-├── gc_runtime.c           # Go runtime GC control hooks
-├── gc_semispace.h         # GC data structures, header layout, constants
-├── writebarrier_dreamcast.c # Write barrier support
-├── scheduler.c            # Run queue, schedule(), goready()
-├── proc.c                 # Goroutine creation, lifecycle
-├── stack.c                # Fixed-size stack allocation and pooling
-├── splitstack.c           # gccgo split-stack compatibility stubs
-├── chan.c                 # Channel implementation
-├── chan.h                 # Channel data structures
-├── select.c               # Select statement
-├── sudog.c                # Wait queue entries
-├── defer_dreamcast.c      # Defer/panic/recover
-├── panic_dreamcast.h      # Panic/checkpoint data structures
-├── go-panic.c             # Compiler/runtime panic helpers
-├── tls_sh4.c              # Goroutine TLS and current_g tracking
-├── timer.c                # Time.Sleep, timers
-├── interface_dreamcast.c  # Interface conversions and runtime itab creation
-├── type_registry.c        # Runtime type registration helpers
-├── type_descriptors.h     # Type descriptor layouts
-├── map_dreamcast.c        # Map implementation
-├── map_dreamcast.h        # Map type definitions
-├── map_fast_internal.h    # Map internals
-├── string_dreamcast.c     # String runtime helpers
-├── go-unsafe-pointer.c    # unsafe helpers
-├── go-print.c             # print/println support
-├── go-memmove.c           # memmove builtin
-├── go-memequal.c          # equality builtin
-├── go-memclr.c            # memclr builtin
-├── go-construct-map.c     # Map construction helpers
-├── go-callers.c           # Caller stack helpers
-├── go-caller.c            # Caller lookup
-├── go-assert.c            # Assert helpers
-├── goroutine.h            # Core data structures
-├── godc_config.h          # Runtime configuration
-├── dc_platform.h          # Platform constants
-├── runtime_sh4_minimal.S  # Context switching assembly
-├── gen-offsets.c          # Offset-check source for assembly layout
-└── asm-offsets.h          # Currently generated placeholder header
-```
-
 ## AssemblyC ABI Synchronization
 
 ### The Problem
 
-Context switching is implemented in assembly (`runtime_sh4_minimal.S`). The assembly
-code accesses G struct fields by hardcoded byte offsets:
+Context switching is implemented partly in assembly (`runtime_sh4_minimal.S`).
+That assembly code must know the exact byte offsets of fields inside C
+structures such as `G` and `sh4_context_t`.
+
+Unlike C, assembly has no type system and no `offsetof()` operator. It only
+sees numbers. A typical pattern looks like this:
 
 ```asm
-mov.l   @(32, r4), r0    ! Load G->context at offset 32
+.equ G_CONTEXT, ...
+...
+add     r1, r0           ! r0 = &G->context
 ```
 
-If someone changes the G struct in C (adds/removes/reorders fields), the assembly
-breaks silently: it reads garbage from the wrong offsets. This is a classic embedded
-systems bug: C struct layout changes invisibly break handwritten assembly.
+If someone changes the `G` struct in C by adding, removing, or reordering
+fields, the assembly can silently start reading or writing the wrong memory.
+This is a classic low-level systems bug: the C layout changed, but the assembly
+constants did not.
 
 ### Current State
 
@@ -951,16 +1158,18 @@ workflow:
    assertion before scheduling starts.
 
 In other words, the assembly file is still the effective source of truth for
-the offsets it consumes.
+the offsets it consumes, even though that is exactly the thing we would like to
+avoid.
 
-### Workflow for Changing G Struct
+This gap is tracked in
+[#14](https://github.com/drpaneas/libgodc/issues/14).
 
-1. Modify `runtime/goroutine.h` (the authoritative definition)
-2. Update `runtime/gen-offsets.c` to mirror the layout being checked
-3. Update the `.equ` values in `runtime/runtime_sh4_minimal.S` if any offsets changed
-4. Run `make runtime/asm-offsets.h` to refresh the placeholder generated header
-5. Run `make check-offsets` to confirm that placeholder output still matches
-6. Commit the layout-related files together
+### Practical Rule
+
+Until that synchronization path is repaired, treat any layout change to
+`runtime/goroutine.h` or related context structures as an assembly change too:
+update the mirrored definitions, update the `.equ` constants in
+`runtime/runtime_sh4_minimal.S`, and verify the offset-check workflow.
 
 ### Why This Matters
 
@@ -975,49 +1184,47 @@ These are nearly impossible to debug. Even with the current partial
 verification, keeping the C layout, placeholder generated header, and assembly
 constants in sync is critical.
 
-## Performance
-
-The source tree includes `tests/bench_architecture.go`, which reports these
-metrics when run on hardware:
-
-| Benchmark | Reported by the current source | Notes |
-|-----------|--------------------------------|-------|
-| `gosched` | ns per yield | `runtime.Gosched()` in a tight loop |
-| Baseline comparison | ns per inline-loop iteration | Rough baseline only; not a direct function call |
-| Buffered channel | ns per operation | Sends and receives on a buffered channel |
-| Context switch | ns per switch | Derived from ping-pong goroutines |
-| Unbuffered channel | ns per roundtrip | Send + receive over an unbuffered channel |
-| Goroutine spawn | ns per spawn | Create, schedule, run, and receive |
-| GC pause | us per forced collection | Retained sizes from 32KB to 1MB |
-| Memory layout | stack size, context size, header size, and large-object threshold | Reports runtime configuration |
-
-Run `tests/bench_architecture.elf` on your hardware for current numbers.
-
 ## Design Decisions
 
 **Why gccgo instead of gc?**
 
-The standard Go compiler (gc) generates code for a completely different
-runtime. gccgo uses GCC's backend, which already supports SH4 targets.
-We replace libgo with libgodc; the compiler doesn't need modification.
+The standard Go compiler (`gc`) targets a very different runtime and does not
+provide a practical SH-4 backend path for this project. `gccgo` already uses
+GCC's backend, which supports SH-4 targets, so libgodc can replace `libgo`
+with a Dreamcast-specific runtime without having to build a new compiler
+backend first.
 
 **Why semispace instead of marksweep?**
 
-Semispace has no fragmentation. In a 16MB system, fragmentation would
-eventually make large allocations impossible even with free memory.
-The 50% space overhead is acceptable for games.
+Semispace allocation is simple, fast, and has no fragmentation. On a 16MB
+console, fragmentation could eventually make large allocations fail even when
+total free memory still exists. The tradeoff is that only half of the
+GC-managed semispace heap is usable at once, which is acceptable for the
+intended game workloads. The current large-allocation bypass has additional
+tradeoffs and limitations; see
+[#6](https://github.com/drpaneas/libgodc/issues/6).
 
 **Why cooperative instead of preemptive?**
 
-Preemptive scheduling requires timer interrupts, signal handling, and
-safepoint insertion. All of this complexity gains nothing on a singlecore
-CPU. Cooperative scheduling is simpler, faster, and sufficient.
+Preemptive scheduling can improve fairness and timer responsiveness, but it
+also needs more machinery: timer-driven interruption, safepoints, and extra
+bookkeeping. On a single-core Dreamcast, that machinery still would not make Go
+goroutines run in parallel, so libgodc currently favors a simpler cooperative
+model. Follow-up work on fairness without abandoning the single-threaded design
+is tracked in [#12](https://github.com/drpaneas/libgodc/issues/12).
 
 **Why fixed stacks instead of growable?**
 
-Growable stacks require compiler support (stack probes) and runtime support
-(morestack). Fixed stacks work with any compiler flags and simplify the
-runtime. 64KB is enough for typical game code.
+Growable stacks require both compiler support and runtime machinery to detect
+overflow, allocate a larger stack, copy active frames, and resume execution on
+the new stack. Fixed stacks remove that machinery and fit the current
+`-fno-split-stack` model, which keeps the runtime much simpler. The tradeoff is
+that stack size becomes a real limit rather than something the runtime can
+expand dynamically. The current default is 64KB for spawned goroutines, but
+that is not a universal guarantee. Related follow-up work is tracked in
+[#4](https://github.com/drpaneas/libgodc/issues/4),
+[#5](https://github.com/drpaneas/libgodc/issues/5), and
+[#10](https://github.com/drpaneas/libgodc/issues/10).
 
 ## References
 

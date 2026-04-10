@@ -1,6 +1,7 @@
 #include "runtime.h"
 #include "gc_semispace.h"
 #include "type_descriptors.h"
+#include "dc_platform.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -662,7 +663,7 @@ void runtime_printeface(Eface e)
     {
         // Validate type pointer is in reasonable memory range
         uintptr_t type_addr = (uintptr_t)e.type;
-        if (type_addr < 0x8c000000 || type_addr > 0x8e000000)
+        if (type_addr < DC_RAM_START || type_addr >= DC_RAM_END)
         {
             printf("invalid_type@%p", e.type);
         }
@@ -671,7 +672,7 @@ void runtime_printeface(Eface e)
         {
             // Validate reflection data pointer
             uintptr_t data_addr = (uintptr_t)e.type->__reflection->__data;
-            if (data_addr >= 0x8c000000 && data_addr < 0x8e000000)
+            if (data_addr >= DC_RAM_START && data_addr < DC_RAM_END)
             {
                 printf("%.*s", (int)e.type->__reflection->__length, e.type->__reflection->__data);
             }
@@ -694,7 +695,7 @@ void runtime_printeface(Eface e)
                 // e.data points to a string header
                 GoString *str = (GoString *)e.data;
                 uintptr_t str_addr = (uintptr_t)str->str;
-                if (str_addr >= 0x8c000000 && str_addr < 0x8e000000 && str->len > 0 &&
+                if (str_addr >= DC_RAM_START && str_addr < DC_RAM_END && str->len > 0 &&
                     str->len < 1024)
                 {
                     printf("\"%.*s\"", (int)str->len, str->str);

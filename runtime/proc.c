@@ -318,4 +318,5 @@ void proc_init(void)
      * not a user goroutine. Count stays at 1 (g0 only). */
 
     setg(main_g);
+    current_tls = main_g->tls;
 }
